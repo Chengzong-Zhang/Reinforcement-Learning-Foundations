@@ -1,675 +1,671 @@
 # ============================================================
-#   PyTorch 速成教程 —— 一天掌握核心语法
-#   涵盖：张量、自动微分、神经网络、训练循环、GPU
+#   PyTorch 速成教程 —— 面向强化学习
+#   涵盖：张量基础 → 神经网络 → 自动微分 →
+#         经验回放 → DQN → Policy Gradient → Actor-Critic
 # ============================================================
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.data import Dataset, DataLoader
 import numpy as np
+import random
+from collections import deque
 
 # ============================================================
-# 第一部分：张量 (Tensor) —— PyTorch 的核心数据结构
+# 第一部分：张量基础 —— 用 RL 场景理解
 # ============================================================
 
-# ---------- 1.1 创建张量 ----------
+# ---------- 1.1 RL 中的常见张量 ----------
 
-x = torch.zeros(3, 4)          # 全0张量，形状 (3,4)，默认 float32
-x = torch.ones(3, 4)           # 全1张量
-x = torch.full((3, 4), 7.0)    # 全填充为7.0，形状 (3,4)
-x = torch.eye(4)               # 4x4 单位矩阵（对角线为1）
-x = torch.empty(3, 4)          # 未初始化张量（值随机，不要直接使用）
+# 状态 (state)：CartPole 的状态是4个浮点数
+state = torch.tensor([0.01, -0.02, 0.03, -0.04], dtype=torch.float32)
+print(state.shape)   # torch.Size([4])
 
-x = torch.randn(3, 4)          # 标准正态分布 N(0,1) 随机张量
-x = torch.rand(3, 4)           # 均匀分布 [0,1) 随机张量
-x = torch.randint(0, 10, (3, 4))  # 整数随机张量，值在 [0,10) 之间
+# 批量状态：从经验回放中采样一批，shape = (batch, state_dim)
+batch_states = torch.randn(32, 4)    # batch=32，每个状态4维
 
-x = torch.arange(0, 10, 2)     # 类似 range(0,10,2)，结果 [0,2,4,6,8]
-x = torch.linspace(0, 1, 5)    # [0,1] 之间均匀取5个点
+# 动作 (action)：离散动作，整数类型
+action = torch.tensor(1, dtype=torch.long)           # 单个动作
+batch_actions = torch.randint(0, 2, (32,))           # 32个动作，值为 0 或 1
 
-# 从 Python list 创建（会推断 dtype）
-a = torch.tensor([1, 2, 3])            # int64
-b = torch.tensor([1.0, 2.0, 3.0])     # float32
-c = torch.tensor([[1, 2], [3, 4]])     # 2D，shape (2,2)
+# 奖励 (reward)：标量浮点
+reward = torch.tensor(1.0)
+batch_rewards = torch.randn(32)                      # 32个奖励
 
-# 从 NumPy 数组创建
-np_arr = np.array([1.0, 2.0, 3.0])
-t_from_np = torch.from_numpy(np_arr)   # 共享内存，不拷贝
-t_copy    = torch.tensor(np_arr)       # 拷贝数据
+# done 标志：episode 是否结束
+done = torch.tensor(False)
+batch_dones = torch.zeros(32, dtype=torch.bool)      # 全未结束
 
-# ---------- 1.2 dtype 与 device ----------
+# ---------- 1.2 设备管理（CPU / GPU）----------
 
-w = torch.ones(5, dtype=torch.float32)   # 单精度浮点（最常用）
-w = torch.ones(5, dtype=torch.float64)   # 双精度浮点
-w = torch.ones(5, dtype=torch.int32)     # 32位整数
-w = torch.ones(5, dtype=torch.bool)      # 布尔型
-
-# 查看设备（CPU 或 GPU）
-print(x.device)   # cpu
-
-# 创建时指定设备（GPU 需要 CUDA 环境）
-# y = torch.randn(10, device='cuda')      # 直接在 GPU 上创建
-# y = torch.randn(10, device='cuda:0')    # 指定第0块 GPU
-
-# 在 CPU / GPU 之间移动
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-x = torch.randn(3, 4)
-x = x.to(device)          # 移动到目标设备（推荐写法）
-# x = x.cuda()            # 等价，但不灵活
+print(f"使用设备: {device}")
 
-# ---------- 1.3 张量属性 ----------
+# RL 中所有张量和模型都要放到同一个设备
+state = state.to(device)
+batch_states = batch_states.to(device)
 
-x = torch.randn(2, 3, 4)
-print(x.shape)      # torch.Size([2, 3, 4])
-print(x.ndim)       # 维数：3
-print(x.dtype)      # torch.float32
-print(x.device)     # cpu
-print(x.numel())    # 元素总数：24
+# ---------- 1.3 张量创建 ----------
 
-# ============================================================
-# 第二部分：张量操作
-# ============================================================
+# RL 中常见的初始化场景
+q_values  = torch.zeros(4)              # 初始 Q 值，4个动作
+returns_g = torch.zeros(200)            # 一条 episode 的累积回报，最多200步
+advantage = torch.empty(32)            # 优势函数，之后会填充数据
 
-# ---------- 2.1 形状变换 ----------
+x = torch.randn(32, 4)                 # 随机初始化一批状态（调试用）
+x = torch.ones(32, 1)                  # 全1，常用于构造基线
+x = torch.arange(0, 200)              # [0,1,...,199]，用于折扣因子计算
 
-x = torch.randn(2, 3, 4)
+# ---------- 1.4 张量属性 ----------
 
-# reshape / view：返回新形状的视图（尽量共享内存）
-y = x.reshape(6, 4)         # 形状 (6,4)
-y = x.view(6, 4)            # 同上，要求内存连续
+t = torch.randn(32, 4)
+print(t.shape)      # torch.Size([32, 4])
+print(t.ndim)       # 2（batch维 + 状态维）
+print(t.dtype)      # torch.float32
+print(t.device)     # cpu 或 cuda:0
+print(t.numel())    # 128（32×4）
 
-# -1 表示让 PyTorch 自动推断该维度大小
-y = x.reshape(2, -1)        # (2, 12)
-y = x.reshape(-1)           # 展平为 1D，长度 24
+# ---------- 1.5 形状变换 ----------
 
-# 增加/删除维度
-y = x.unsqueeze(0)          # 在第0维插入一个新轴，(1,2,3,4)
-y = x.unsqueeze(-1)         # 在最后插入新轴，(2,3,4,1)
-y = x.unsqueeze(0).squeeze(0)  # squeeze 删除大小为1的维度
+# Q 网络输出 (batch, actions)，取单条时需要 squeeze
+q_out = torch.randn(1, 2)              # 单条状态的 Q 值，shape (1,2)
+q_out = q_out.squeeze(0)              # -> (2,)，去掉 batch 维
 
-# 转置
-x2d = torch.randn(3, 4)
-y = x2d.T                   # 2D 转置，(4,3)
-y = x.permute(2, 0, 1)      # 任意维度重排，(4,2,3)
-y = x.transpose(0, 1)       # 交换第0和第1维，(3,2,4)
+# Policy 网络输出 logits，需要 unsqueeze 配合其他操作
+logits = torch.randn(4)               # 单步 (4个动作的 logit)
+logits = logits.unsqueeze(0)          # -> (1,4)，加上 batch 维才能送入网络
 
-# 展平
-y = x.flatten()             # 完全展平
-y = x.flatten(start_dim=1)  # 从第1维开始展平，(2,12)
+# reshape：将卷积特征展平后送入全连接层（Atari 像素输入场景）
+feature_map = torch.randn(32, 64, 7, 7)          # (batch, C, H, W)
+flat = feature_map.reshape(32, -1)               # (32, 3136)，-1 自动推断
 
-# ---------- 2.2 拼接与分割 ----------
+# ---------- 1.6 索引与切片 ----------
 
-a = torch.randn(2, 3)
-b = torch.randn(2, 3)
+batch_states = torch.randn(32, 4)
+batch_actions = torch.randint(0, 2, (32,))
 
-# cat：沿已有维度拼接
-y = torch.cat([a, b], dim=0)   # (4,3) —— 沿行拼接
-y = torch.cat([a, b], dim=1)   # (2,6) —— 沿列拼接
+# 从 Q 值矩阵中取出每个样本实际执行的动作对应的 Q 值（DQN 核心操作）
+q_all = torch.randn(32, 2)                       # 所有动作的 Q 值，(32,2)
+q_taken = q_all.gather(1, batch_actions.unsqueeze(1))   # (32,1)
+# gather(dim, index)：在 dim=1（动作维）上，按 index 选值
+q_taken = q_taken.squeeze(1)                     # -> (32,)
 
-# stack：新建一个维度然后拼接（输入形状必须完全相同）
-y = torch.stack([a, b], dim=0) # (2,2,3) —— 新第0维
+# 布尔掩码：只更新非终止状态的 TD 目标（done=False 才有下一步）
+batch_dones = torch.zeros(32, dtype=torch.bool)
+batch_dones[5] = True                            # 第5个样本 episode 结束
+mask = ~batch_dones                              # 取反：True 表示未结束
+next_q = torch.randn(32)
+next_q[batch_dones] = 0.0                        # 终止状态的下一步 Q 值置0
 
-# chunk / split：分割张量
-chunks = torch.chunk(y, 2, dim=0)   # 沿第0维分成2份
-pieces = torch.split(y, 1, dim=0)   # 沿第0维每份大小为1
+# ---------- 1.7 数学运算 ----------
 
-# ---------- 2.3 索引与切片 ----------
+rewards  = torch.randn(32)
+next_q   = torch.randn(32)
+gamma    = 0.99
 
-x = torch.arange(24).reshape(2, 3, 4).float()
+# Bellman 方程：TD 目标 = r + γ * max Q(s',a')
+td_target = rewards + gamma * next_q             # 逐元素加法和标量乘法
 
-print(x[0])            # 第0个"页"，shape (3,4)
-print(x[0, 1])         # 第0页第1行，shape (4,)
-print(x[0, 1, 2])      # 标量元素
-print(x[:, :, 0])      # 所有页、所有行、第0列，shape (2,3)
-print(x[..., 0])       # ... 代表省略前面所有维度，同上
+# 归约：计算一批损失的均值
+losses = (td_target - torch.randn(32)) ** 2
+mean_loss = losses.mean()                        # 标量，用于 backward()
 
-# 花式索引（整数数组索引）
-idx = torch.tensor([0, 2])
-print(x[:, idx, :])    # 取第1维中第0和第2行
+# 计算折扣累积回报（从后往前遍历）
+T = 10
+ep_rewards = torch.tensor([1.0] * T)
+returns = torch.zeros(T)
+G = 0.0
+for t in reversed(range(T)):
+    G = ep_rewards[t].item() + gamma * G        # G_t = r_t + γ * G_{t+1}
+    returns[t] = G
 
-# 布尔掩码索引
-mask = x > 10
-print(x[mask])         # 返回满足条件的元素，1D
+# 优势函数标准化（减均值除标准差，稳定训练）
+advantages = returns - returns.mean()
+advantages = advantages / (advantages.std() + 1e-8)  # +eps 防止除0
 
-# ---------- 2.4 数学运算 ----------
+# ---------- 1.8 与 NumPy 互转 ----------
 
-a = torch.tensor([1.0, 2.0, 3.0])
-b = torch.tensor([4.0, 5.0, 6.0])
+# RL 环境（如 gym）返回 numpy array，需要转成 tensor
+np_state = np.array([0.01, -0.02, 0.03, -0.04], dtype=np.float32)
+state_t = torch.from_numpy(np_state)            # 共享内存，零拷贝
+state_t = torch.tensor(np_state)               # 拷贝（更安全）
 
-# 元素级运算（逐元素）
-print(a + b)            # 加
-print(a - b)            # 减
-print(a * b)            # 乘（不是矩阵乘法！）
-print(a / b)            # 除
-print(a ** 2)           # 幂
-print(torch.sqrt(a))    # 开方
+# 网络输出 tensor，执行动作前需要转回 numpy/python int
+q_values = torch.tensor([0.1, 0.9])
+action = q_values.argmax().item()               # .item() 转为 Python int
 
-# 矩阵乘法
-A = torch.randn(3, 4)
-B = torch.randn(4, 5)
-C = A @ B               # @ 运算符，等价于 torch.matmul(A, B)
-C = torch.mm(A, B)      # 严格 2D 矩阵乘法
-
-# 批量矩阵乘法（batch matmul）
-A = torch.randn(8, 3, 4)   # batch=8，每个 (3,4)
-B = torch.randn(8, 4, 5)
-C = torch.bmm(A, B)         # (8,3,5)
-
-# 向量点积
-dot = torch.dot(a, b)       # 标量
-
-# 归约操作
-x = torch.randn(3, 4)
-print(x.sum())              # 全部求和，标量
-print(x.sum(dim=0))         # 沿第0维求和，shape (4,)
-print(x.sum(dim=1))         # 沿第1维求和，shape (3,)
-print(x.sum(dim=1, keepdim=True))  # 保持维度，shape (3,1)
-
-print(x.mean())             # 均值
-print(x.max())              # 最大值（标量）
-print(x.max(dim=0))         # 返回 (values, indices) 两个张量
-print(x.argmax(dim=1))      # 每行最大值的索引，shape (3,)
-print(x.min())
-print(x.std())
-print(x.norm())             # L2 范数
-
-# 广播（Broadcasting）：形状不同时自动扩展
-# 规则：从尾部对齐，大小为1的维度可以被广播
-A = torch.randn(3, 1)
-B = torch.randn(1, 4)
-C = A + B               # 结果 (3,4)，A 的列被复制4次，B 的行被复制3次
-
-# ---------- 2.5 原地操作（inplace） ----------
-
-x = torch.ones(3)
-x.add_(1)       # 下划线结尾 = 原地操作，x 变为 [2,2,2]
-x.mul_(2)       # 原地乘2
-x.zero_()       # 清零
-
-# ---------- 2.6 类型转换 ----------
-
-x = torch.randn(3)
-y = x.int()             # float32 -> int32
-y = x.long()            # float32 -> int64
-y = x.half()            # float32 -> float16
-y = x.float()           # -> float32
-y = x.double()          # -> float64
-y = x.to(torch.int8)    # 通用写法
-
-# ---------- 2.7 与 NumPy 互转 ----------
-
-t = torch.randn(3, 4)
-n = t.numpy()           # Tensor -> ndarray（CPU 上共享内存）
-t2 = torch.from_numpy(n)  # ndarray -> Tensor（共享内存）
+# detach() + numpy()：推理时不需要梯度
+probs = torch.softmax(torch.randn(4), dim=0)
+probs_np = probs.detach().numpy()               # 先 detach，再转 numpy
+action = np.random.choice(4, p=probs_np)       # 按概率采样动作
 
 # ============================================================
-# 第三部分：自动微分 (Autograd)
+# 第二部分：RL 中的神经网络
 # ============================================================
 
-# ---------- 3.1 requires_grad 与 grad ----------
+# ---------- 2.1 Q 网络（DQN 用）----------
+# 输入：状态 s，输出：每个动作的 Q(s,a)
 
-# 只有 requires_grad=True 的张量才会被追踪梯度
-x = torch.tensor(2.0, requires_grad=True)
+class QNetwork(nn.Module):
+    def __init__(self, state_dim, action_dim, hidden_dim=128):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),   # 状态 -> 隐层
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim),  # 隐层 -> 每个动作的 Q 值
+            # 输出层没有激活函数，Q 值可以是任意实数
+        )
 
-# 前向计算：构建计算图
-y = x ** 2 + 3 * x + 1   # y = x^2 + 3x + 1
+    def forward(self, state):
+        return self.net(state)                  # shape: (batch, action_dim)
 
-# 反向传播：计算梯度
-y.backward()              # dy/dx = 2x + 3，在 x=2 时 = 7
+# ---------- 2.2 策略网络（Policy Network，离散动作）----------
+# 输入：状态，输出：各动作的概率分布（用于 REINFORCE / Actor-Critic）
 
-print(x.grad)             # tensor(7.)
+class PolicyNetwork(nn.Module):
+    def __init__(self, state_dim, action_dim, hidden_dim=128):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, action_dim),
+            # 输出层不加 softmax，用 Categorical 分布采样（更稳定）
+        )
 
-# ---------- 3.2 多变量梯度 ----------
+    def forward(self, state):
+        logits = self.net(state)               # 未归一化的对数概率
+        return logits
 
-x = torch.tensor([1.0, 2.0, 3.0], requires_grad=True)
-y = (x ** 2).sum()        # y = x1^2 + x2^2 + x3^2
-y.backward()
-print(x.grad)             # [2*1, 2*2, 2*3] = [2., 4., 6.]
+    def get_action(self, state):
+        logits = self.forward(state)
+        dist = torch.distributions.Categorical(logits=logits)
+        action = dist.sample()                 # 按概率采样一个动作
+        log_prob = dist.log_prob(action)       # 该动作的对数概率，用于计算梯度
+        return action.item(), log_prob
 
-# ---------- 3.3 不追踪梯度的场景 ----------
+# ---------- 2.3 价值网络（Value Network，用于 Actor-Critic）----------
+# 输入：状态，输出：状态价值 V(s)（标量）
 
-# 推理阶段不需要梯度，用 no_grad 节省内存和计算
-x = torch.randn(3, requires_grad=True)
+class ValueNetwork(nn.Module):
+    def __init__(self, state_dim, hidden_dim=128):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1),          # 输出标量 V(s)
+        )
+
+    def forward(self, state):
+        return self.net(state).squeeze(-1)     # (batch,1) -> (batch,)
+
+# ---------- 2.4 Actor-Critic 合并网络（共享特征提取）----------
+# 前几层共享，最后分叉为 actor head 和 critic head
+
+class ActorCritic(nn.Module):
+    def __init__(self, state_dim, action_dim, hidden_dim=128):
+        super().__init__()
+        # 共享的特征提取主干
+        self.backbone = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+        )
+        # Actor head：输出动作 logits
+        self.actor_head = nn.Linear(hidden_dim, action_dim)
+        # Critic head：输出状态价值
+        self.critic_head = nn.Linear(hidden_dim, 1)
+
+    def forward(self, state):
+        feat = self.backbone(state)            # 共享特征
+        logits = self.actor_head(feat)         # 动作概率（未归一化）
+        value  = self.critic_head(feat).squeeze(-1)  # 状态价值 V(s)
+        return logits, value
+
+    def get_action(self, state):
+        logits, value = self.forward(state)
+        dist = torch.distributions.Categorical(logits=logits)
+        action = dist.sample()
+        log_prob = dist.log_prob(action)
+        entropy = dist.entropy()               # 策略熵，用于鼓励探索
+        return action.item(), log_prob, value, entropy
+
+# ---------- 2.5 Dueling DQN 网络 ----------
+# 将 Q(s,a) 分解为 V(s) + A(s,a)（优势），提升学习效率
+
+class DuelingQNetwork(nn.Module):
+    def __init__(self, state_dim, action_dim, hidden_dim=128):
+        super().__init__()
+        self.backbone = nn.Sequential(
+            nn.Linear(state_dim, hidden_dim),
+            nn.ReLU(),
+        )
+        self.value_stream    = nn.Linear(hidden_dim, 1)          # V(s)
+        self.advantage_stream = nn.Linear(hidden_dim, action_dim) # A(s,a)
+
+    def forward(self, state):
+        feat = self.backbone(state)
+        V = self.value_stream(feat)                              # (batch,1)
+        A = self.advantage_stream(feat)                          # (batch, actions)
+        # Q = V + (A - mean(A))，减均值保证唯一性
+        Q = V + (A - A.mean(dim=1, keepdim=True))
+        return Q
+
+# ---------- 2.6 查看模型 ----------
+
+q_net = QNetwork(state_dim=4, action_dim=2)
+print(q_net)
+total_params = sum(p.numel() for p in q_net.parameters())
+print(f"参数量: {total_params}")
+
+# 用假输入测试输出形状（调试必备）
+dummy_state = torch.randn(1, 4)
 with torch.no_grad():
-    y = x * 2              # 这里 y 不在计算图中
-
-# 单次操作不追踪
-y = x.detach()             # 返回不带梯度的张量（共享数据）
-y = x.detach().numpy()     # 先 detach 再转 numpy（常用）
-
-# ---------- 3.4 梯度累积与清零 ----------
-
-x = torch.tensor(1.0, requires_grad=True)
-for _ in range(3):
-    y = x * 2
-    y.backward()
-    # 注意：PyTorch 默认累积梯度，不会自动清零！
-    print(x.grad)          # 2, 4, 6（累积）
-    x.grad.zero_()         # 手动清零，否则下次 backward 会累加
+    out = q_net(dummy_state)
+print(f"Q网络输出形状: {out.shape}")    # torch.Size([1, 2])
 
 # ============================================================
-# 第四部分：nn.Module —— 定义神经网络
+# 第三部分：自动微分 —— RL 中的损失计算
 # ============================================================
 
-# ---------- 4.1 最简单的线性网络 ----------
+# ---------- 3.1 DQN 的 TD 损失 ----------
 
-# Sequential：按顺序堆叠层，适合简单网络
-model_simple = nn.Sequential(
-    nn.Linear(784, 256),   # 全连接层：输入784，输出256
-    nn.ReLU(),             # 激活函数
-    nn.Linear(256, 128),
-    nn.ReLU(),
-    nn.Linear(128, 10),    # 输出10类
-)
+# 模拟一批经验：(s, a, r, s', done)
+state_dim, action_dim, batch_size = 4, 2, 32
+gamma = 0.99
 
-# ---------- 4.2 继承 nn.Module（推荐，更灵活）----------
+q_net    = QNetwork(state_dim, action_dim)
+q_target = QNetwork(state_dim, action_dim)  # Target 网络（权重延迟更新）
+q_target.load_state_dict(q_net.state_dict())  # 初始时同步权重
 
-class MLP(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
-        super().__init__()  # 必须调用父类 __init__
-        # 在 __init__ 里声明所有子层（会自动注册参数）
-        self.fc1 = nn.Linear(input_dim, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, output_dim)
-        self.relu = nn.ReLU()
-        self.dropout = nn.Dropout(p=0.5)  # 以50%概率随机丢弃神经元
+optimizer = optim.Adam(q_net.parameters(), lr=1e-3)
 
-    def forward(self, x):
-        # forward 定义数据流向，自动微分会追踪这里的计算
-        x = self.fc1(x)        # 线性变换
-        x = self.relu(x)       # 激活
-        x = self.dropout(x)    # Dropout（训练时随机丢弃）
-        x = self.fc2(x)        # 输出层
-        return x               # 返回 logits（未经 softmax）
+s  = torch.randn(batch_size, state_dim)
+a  = torch.randint(0, action_dim, (batch_size,))
+r  = torch.randn(batch_size)
+s2 = torch.randn(batch_size, state_dim)
+d  = torch.zeros(batch_size, dtype=torch.bool)
 
-model = MLP(784, 256, 10)
+# 前向传播：计算当前 Q 值
+q_pred = q_net(s)                              # (32,2)
+q_pred = q_pred.gather(1, a.unsqueeze(1)).squeeze(1)  # 取实际动作的 Q 值 (32,)
 
-# ---------- 4.3 常用层速查 ----------
+# 用 target 网络计算 TD 目标（不需要梯度）
+with torch.no_grad():
+    q_next = q_target(s2).max(dim=1).values   # max Q(s',a')，shape (32,)
+    q_next[d] = 0.0                           # 终止状态无下一步
+    td_target = r + gamma * q_next            # Bellman 方程
 
-# 全连接层
-nn.Linear(in_features=128, out_features=64, bias=True)
+# 计算损失并反向传播
+loss = F.mse_loss(q_pred, td_target)          # TD 误差的均方
+# 也可以用 Huber Loss，对异常值更鲁棒：
+# loss = F.smooth_l1_loss(q_pred, td_target)
 
-# 卷积层（图像）
-nn.Conv2d(in_channels=3, out_channels=16, kernel_size=3, stride=1, padding=1)
-# padding='same' 可以保持特征图大小不变
+optimizer.zero_grad()    # 清零梯度（每次 backward 前必须清零）
+loss.backward()          # 反向传播，计算所有参数的梯度
+torch.nn.utils.clip_grad_norm_(q_net.parameters(), max_norm=10.0)  # 梯度裁剪
+optimizer.step()         # 更新参数
 
-# 池化层
-nn.MaxPool2d(kernel_size=2, stride=2)  # 最大池化，特征图缩小一半
-nn.AvgPool2d(kernel_size=2, stride=2)  # 平均池化
+print(f"DQN TD Loss: {loss.item():.4f}")
 
-# 批归一化（加速训练、稳定梯度）
-nn.BatchNorm1d(num_features=128)  # 用于全连接层输出
-nn.BatchNorm2d(num_features=16)   # 用于卷积层输出（通道数）
+# ---------- 3.2 REINFORCE 的策略梯度损失 ----------
 
-# 层归一化（Transformer 常用）
-nn.LayerNorm(normalized_shape=128)
+policy_net = PolicyNetwork(state_dim=4, action_dim=2)
+optimizer_p = optim.Adam(policy_net.parameters(), lr=1e-3)
 
-# Dropout
-nn.Dropout(p=0.5)    # 1D，全连接层后
-nn.Dropout2d(p=0.5)  # 2D，卷积层后（整个通道置0）
+# 假设跑完一条 episode，收集了 log_probs 和 returns
+log_probs = [torch.tensor(-0.5, requires_grad=True),
+             torch.tensor(-0.3, requires_grad=True)]   # 每步动作的 log π(a|s)
+returns_list = [1.98, 1.0]                              # 折扣回报 G_t
 
-# 嵌入层（NLP，将整数 token 转为向量）
-nn.Embedding(num_embeddings=10000, embedding_dim=256)
+log_probs_t = torch.stack(log_probs)                   # (T,)
+returns_t   = torch.tensor(returns_list)                # (T,)
 
-# 循环神经网络
-nn.RNN(input_size=128, hidden_size=256, num_layers=2, batch_first=True)
-nn.LSTM(input_size=128, hidden_size=256, num_layers=2, batch_first=True)
-nn.GRU(input_size=128, hidden_size=256, num_layers=2, batch_first=True)
+# 策略梯度损失：- E[G_t * log π(a_t|s_t)]
+# 负号：因为我们用梯度"下降"，但策略梯度是要"上升"
+pg_loss = -(log_probs_t * returns_t).mean()
 
-# Transformer
-nn.MultiheadAttention(embed_dim=512, num_heads=8)
-nn.TransformerEncoderLayer(d_model=512, nhead=8)
-nn.TransformerEncoder(nn.TransformerEncoderLayer(512, 8), num_layers=6)
+optimizer_p.zero_grad()
+pg_loss.backward()
+optimizer_p.step()
 
-# ---------- 4.4 激活函数 ----------
+print(f"Policy Gradient Loss: {pg_loss.item():.4f}")
 
-nn.ReLU()            # max(0, x)，最常用
-nn.LeakyReLU(0.01)   # 负半轴有小斜率，解决"神经元死亡"
-nn.GELU()            # 平滑版 ReLU，Transformer 常用
-nn.Sigmoid()         # 输出 (0,1)，二分类输出层
-nn.Tanh()            # 输出 (-1,1)
-nn.Softmax(dim=1)    # 多分类概率，通常在损失函数内部处理
+# ---------- 3.3 Actor-Critic 的组合损失 ----------
 
-# 也可以用函数式 API（不需要创建对象）
-F.relu(x)
-F.gelu(x)
-F.sigmoid(x)
-F.softmax(x, dim=1)
+ac_net = ActorCritic(state_dim=4, action_dim=2)
+optimizer_ac = optim.Adam(ac_net.parameters(), lr=1e-3)
 
-# ---------- 4.5 查看模型 ----------
+# 一批 transition
+states   = torch.randn(32, 4)
+actions  = torch.randint(0, 2, (32,))
+rewards  = torch.randn(32)
+dones    = torch.zeros(32)
+next_states = torch.randn(32, 4)
 
-model = MLP(784, 256, 10)
-print(model)                           # 打印网络结构
-print(sum(p.numel() for p in model.parameters()))  # 总参数量
-# 只计算可训练参数
-print(sum(p.numel() for p in model.parameters() if p.requires_grad))
+logits, values = ac_net(states)
 
-# 遍历参数
-for name, param in model.named_parameters():
-    print(name, param.shape)
+# Critic 损失：TD 误差（价值网络学习 V(s)）
+with torch.no_grad():
+    _, next_values = ac_net(next_states)
+    td_targets = rewards + gamma * next_values * (1 - dones)
 
-# ============================================================
-# 第五部分：损失函数
-# ============================================================
+critic_loss = F.mse_loss(values, td_targets)
 
-# 多分类交叉熵（最常用）
-# 输入：logits (N, C)，target (N,) 整数类别
-criterion = nn.CrossEntropyLoss()
-logits = torch.randn(8, 10)   # batch=8，10类
-labels = torch.randint(0, 10, (8,))  # 每个样本的真实类别
-loss = criterion(logits, labels)
+# Actor 损失：用 TD 误差作为优势函数
+advantages = (td_targets - values).detach()           # detach()！不让梯度流回 critic
+dist = torch.distributions.Categorical(logits=logits)
+log_probs = dist.log_prob(actions)
+entropy   = dist.entropy().mean()                      # 熵正则项，鼓励探索
 
-# 二分类交叉熵（配合 Sigmoid）
-# 输入：概率 (N,)，target (N,) 0或1
-criterion = nn.BCELoss()
-probs = torch.sigmoid(torch.randn(8))
-labels_bin = torch.randint(0, 2, (8,)).float()
-loss = criterion(probs, labels_bin)
+actor_loss = -(log_probs * advantages).mean()
 
-# BCEWithLogitsLoss（更稳定，内部合并 Sigmoid）
-criterion = nn.BCEWithLogitsLoss()
-logits_bin = torch.randn(8)
-loss = criterion(logits_bin, labels_bin)
+# 总损失 = actor损失 + critic损失 - 熵奖励
+# 系数可调：critic_coef 和 entropy_coef 是超参数
+total_loss = actor_loss + 0.5 * critic_loss - 0.01 * entropy
 
-# 均方误差（回归）
-criterion = nn.MSELoss()
-pred = torch.randn(8)
-target = torch.randn(8)
-loss = criterion(pred, target)
+optimizer_ac.zero_grad()
+total_loss.backward()
+torch.nn.utils.clip_grad_norm_(ac_net.parameters(), max_norm=0.5)
+optimizer_ac.step()
 
-# 平均绝对误差（回归，对异常值鲁棒）
-criterion = nn.L1Loss()
+print(f"Actor Loss: {actor_loss.item():.4f}, Critic Loss: {critic_loss.item():.4f}")
 
-# Huber Loss（MSE 和 L1 的结合）
-criterion = nn.SmoothL1Loss()
+# ---------- 3.4 no_grad 和 detach 的使用场景 ----------
+
+# no_grad：推理时（与环境交互时）不需要梯度，节省内存
+state = torch.randn(1, 4)
+with torch.no_grad():
+    q_values = q_net(state)                # 不建立计算图
+    action = q_values.argmax(dim=1).item() # 选择最优动作
+
+# detach()：计算 TD 目标时，target 网络的输出不应该参与梯度计算
+# 已在上面 DQN 部分演示（with torch.no_grad() 包裹 target 网络即可）
 
 # ============================================================
-# 第六部分：优化器
+# 第四部分：经验回放缓冲区 (Replay Buffer)
 # ============================================================
 
-model = MLP(784, 256, 10)
+class ReplayBuffer:
+    def __init__(self, capacity):
+        # deque 是双端队列，超出容量时自动从左侧删除旧数据
+        self.buffer = deque(maxlen=capacity)
 
-# SGD（随机梯度下降）
-optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9, weight_decay=1e-4)
-# lr: 学习率；momentum: 动量（加速收敛）；weight_decay: L2正则化
+    def push(self, state, action, reward, next_state, done):
+        # 存储一条 transition
+        self.buffer.append((state, action, reward, next_state, done))
 
-# Adam（最常用，自适应学习率）
-optimizer = optim.Adam(model.parameters(), lr=1e-3, betas=(0.9, 0.999), eps=1e-8)
+    def sample(self, batch_size):
+        # 随机采样一批 transition（打破时序相关性）
+        batch = random.sample(self.buffer, batch_size)
+        # zip(*batch) 将 list of tuples 转置为 tuple of lists
+        states, actions, rewards, next_states, dones = zip(*batch)
 
-# AdamW（Adam + 正确的权重衰减，Transformer 标配）
-optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.01)
-
-# RMSprop
-optimizer = optim.RMSprop(model.parameters(), lr=0.01)
-
-# ---------- 学习率调度器 ----------
-
-# 每隔 step_size 个 epoch，lr 乘以 gamma
-scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
-
-# 余弦退火（推荐）
-scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=100)
-
-# 根据验证 loss 自动降低 lr
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=5, factor=0.5)
-
-# ============================================================
-# 第七部分：数据加载
-# ============================================================
-
-# ---------- 7.1 自定义 Dataset ----------
-
-class MyDataset(Dataset):
-    def __init__(self, X, y):
-        # X: numpy array 或 tensor，y: 标签
-        self.X = torch.tensor(X, dtype=torch.float32)
-        self.y = torch.tensor(y, dtype=torch.long)
+        return (
+            torch.tensor(np.array(states),      dtype=torch.float32),
+            torch.tensor(np.array(actions),     dtype=torch.long),
+            torch.tensor(np.array(rewards),     dtype=torch.float32),
+            torch.tensor(np.array(next_states), dtype=torch.float32),
+            torch.tensor(np.array(dones),       dtype=torch.float32),
+        )
 
     def __len__(self):
-        # 返回数据集大小，DataLoader 需要
-        return len(self.X)
+        return len(self.buffer)
 
-    def __getitem__(self, idx):
-        # 返回单个样本（DataLoader 会自动批量化）
-        return self.X[idx], self.y[idx]
-
-# ---------- 7.2 DataLoader ----------
-
-# 模拟数据
-X_data = np.random.randn(1000, 20).astype(np.float32)
-y_data = np.random.randint(0, 2, 1000)
-
-dataset = MyDataset(X_data, y_data)
-
-# 划分训练集/验证集
-train_size = int(0.8 * len(dataset))
-val_size = len(dataset) - train_size
-train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
-
-train_loader = DataLoader(
-    train_dataset,
-    batch_size=32,       # 每批32个样本
-    shuffle=True,        # 训练时打乱顺序
-    num_workers=0,       # 并行加载的进程数（Windows 建议 0）
-    pin_memory=True,     # GPU 训练时加速（将数据固定在内存）
-)
-
-val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
+    @property
+    def is_ready(self, min_size=1000):
+        # 缓冲区足够大才开始训练
+        return len(self.buffer) >= min_size
 
 # ============================================================
-# 第八部分：完整训练循环
+# 第五部分：DQN 完整实现
 # ============================================================
 
-def train_one_epoch(model, loader, criterion, optimizer, device):
-    model.train()              # 切换到训练模式（启用 Dropout、BatchNorm 更新）
-    total_loss = 0.0
-    correct = 0
-    total = 0
+def train_dqn(
+    state_dim   = 4,
+    action_dim  = 2,
+    num_episodes= 200,
+    gamma       = 0.99,
+    lr          = 1e-3,
+    batch_size  = 64,
+    buffer_size = 10000,
+    target_update_freq = 10,   # 每隔多少个 episode 同步 target 网络
+    eps_start   = 1.0,
+    eps_end     = 0.05,
+    eps_decay   = 0.995,
+):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    for batch_X, batch_y in loader:
-        # 1. 将数据移到目标设备
-        batch_X = batch_X.to(device)
-        batch_y = batch_y.to(device)
+    # 在线网络（持续更新）和目标网络（延迟更新，提供稳定的 TD 目标）
+    online_net = QNetwork(state_dim, action_dim).to(device)
+    target_net = QNetwork(state_dim, action_dim).to(device)
+    target_net.load_state_dict(online_net.state_dict())
+    target_net.eval()                         # target 网络不需要训练模式
 
-        # 2. 清零上一步的梯度（必须！否则梯度累积）
+    optimizer = optim.Adam(online_net.parameters(), lr=lr)
+    buffer    = ReplayBuffer(buffer_size)
+    epsilon   = eps_start
+
+    for episode in range(num_episodes):
+        # 模拟环境交互（实际用 gym.make('CartPole-v1') 等）
+        state_np = np.random.randn(state_dim).astype(np.float32)
+        ep_reward = 0.0
+
+        for step in range(200):                         # 最多200步
+            # ε-贪婪策略：以 ε 概率随机探索，否则选最优动作
+            if random.random() < epsilon:
+                action = random.randint(0, action_dim - 1)   # 随机动作
+            else:
+                state_t = torch.tensor(state_np).unsqueeze(0).to(device)  # (1,4)
+                with torch.no_grad():
+                    action = online_net(state_t).argmax(dim=1).item()      # 贪婪动作
+
+            # 执行动作，获得下一状态和奖励（模拟）
+            next_state_np = np.random.randn(state_dim).astype(np.float32)
+            reward = 1.0
+            done   = (step == 199)
+
+            # 存入回放缓冲区
+            buffer.push(state_np, action, reward, next_state_np, float(done))
+            state_np = next_state_np
+            ep_reward += reward
+
+            # 等缓冲区积累足够多的数据再开始训练
+            if len(buffer) < batch_size:
+                continue
+
+            # 从缓冲区采样并训练
+            s, a, r, s2, d = buffer.sample(batch_size)
+            s, a, r, s2, d = s.to(device), a.to(device), r.to(device), s2.to(device), d.to(device)
+
+            # 计算当前 Q 值
+            q_pred = online_net(s).gather(1, a.unsqueeze(1)).squeeze(1)
+
+            # 计算 TD 目标（用 target 网络）
+            with torch.no_grad():
+                q_next = target_net(s2).max(dim=1).values
+                td_target = r + gamma * q_next * (1 - d)
+
+            loss = F.smooth_l1_loss(q_pred, td_target)
+
+            optimizer.zero_grad()
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(online_net.parameters(), 10.0)
+            optimizer.step()
+
+            if done:
+                break
+
+        # ε 衰减：随时间减少探索
+        epsilon = max(eps_end, epsilon * eps_decay)
+
+        # 定期将在线网络权重复制到目标网络
+        if episode % target_update_freq == 0:
+            target_net.load_state_dict(online_net.state_dict())
+
+        if (episode + 1) % 20 == 0:
+            print(f"Episode {episode+1:4d} | Reward {ep_reward:.1f} | ε {epsilon:.3f}")
+
+    return online_net
+
+# ============================================================
+# 第六部分：REINFORCE（蒙特卡洛策略梯度）
+# ============================================================
+
+def train_reinforce(
+    state_dim   = 4,
+    action_dim  = 2,
+    num_episodes= 300,
+    gamma       = 0.99,
+    lr          = 1e-3,
+):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    policy = PolicyNetwork(state_dim, action_dim).to(device)
+    optimizer = optim.Adam(policy.parameters(), lr=lr)
+
+    for episode in range(num_episodes):
+        # 收集一整条 episode 的数据（蒙特卡洛方法，必须跑完才能更新）
+        log_probs_ep = []
+        rewards_ep   = []
+
+        state_np = np.random.randn(state_dim).astype(np.float32)
+
+        for step in range(200):
+            state_t = torch.tensor(state_np).unsqueeze(0).to(device)  # (1,4)
+
+            # 从策略网络采样动作
+            logits = policy(state_t)                                    # (1,2)
+            dist   = torch.distributions.Categorical(logits=logits)
+            action = dist.sample()                                      # 采样
+            log_prob = dist.log_prob(action)                           # log π(a|s)
+
+            # 执行动作（模拟）
+            next_state_np = np.random.randn(state_dim).astype(np.float32)
+            reward = 1.0
+            done   = (step == 199)
+
+            log_probs_ep.append(log_prob)
+            rewards_ep.append(reward)
+            state_np = next_state_np
+
+            if done:
+                break
+
+        # 计算折扣累积回报 G_t（从后往前）
+        returns = []
+        G = 0.0
+        for r in reversed(rewards_ep):
+            G = r + gamma * G
+            returns.insert(0, G)               # 插到列表开头
+
+        returns_t = torch.tensor(returns, dtype=torch.float32).to(device)
+
+        # 标准化回报（减均值除标准差，稳定训练）
+        returns_t = (returns_t - returns_t.mean()) / (returns_t.std() + 1e-8)
+
+        # 拼接所有步的 log_prob
+        log_probs_t = torch.cat(log_probs_ep)   # (T,)
+
+        # REINFORCE 损失：- 1/T * Σ G_t * log π(a_t|s_t)
+        loss = -(log_probs_t * returns_t).mean()
+
         optimizer.zero_grad()
-
-        # 3. 前向传播
-        logits = model(batch_X)         # (batch, num_classes)
-
-        # 4. 计算损失
-        loss = criterion(logits, batch_y)
-
-        # 5. 反向传播（计算梯度）
         loss.backward()
-
-        # 6. 梯度裁剪（防止梯度爆炸，可选）
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-
-        # 7. 更新参数
+        torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
         optimizer.step()
 
-        # 统计
-        total_loss += loss.item() * batch_X.size(0)  # .item() 将标量 tensor 转为 Python float
-        pred = logits.argmax(dim=1)                  # 取最大 logit 对应的类别
-        correct += (pred == batch_y).sum().item()
-        total += batch_X.size(0)
+        if (episode + 1) % 50 == 0:
+            ep_reward = sum(rewards_ep)
+            print(f"Episode {episode+1:4d} | Reward {ep_reward:.1f} | Loss {loss.item():.4f}")
 
-    return total_loss / total, correct / total
-
-
-def evaluate(model, loader, criterion, device):
-    model.eval()               # 切换到评估模式（关闭 Dropout，BatchNorm 使用统计值）
-    total_loss = 0.0
-    correct = 0
-    total = 0
-
-    with torch.no_grad():      # 不计算梯度，节省内存
-        for batch_X, batch_y in loader:
-            batch_X = batch_X.to(device)
-            batch_y = batch_y.to(device)
-
-            logits = model(batch_X)
-            loss = criterion(logits, batch_y)
-
-            total_loss += loss.item() * batch_X.size(0)
-            pred = logits.argmax(dim=1)
-            correct += (pred == batch_y).sum().item()
-            total += batch_X.size(0)
-
-    return total_loss / total, correct / total
-
-
-# ---------- 完整训练主程序 ----------
-
-def main():
-    # 设备
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    print(f"使用设备: {device}")
-
-    # 模型、损失、优化器
-    model = MLP(20, 64, 2).to(device)    # 输入20维，二分类
-    criterion = nn.CrossEntropyLoss()
-    optimizer = optim.AdamW(model.parameters(), lr=1e-3)
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
-
-    best_val_acc = 0.0
-    num_epochs = 50
-
-    for epoch in range(num_epochs):
-        train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
-        val_loss, val_acc = evaluate(model, val_loader, criterion, device)
-
-        # 调整学习率
-        scheduler.step()
-
-        # 保存最优模型
-        if val_acc > best_val_acc:
-            best_val_acc = val_acc
-            torch.save(model.state_dict(), 'best_model.pth')  # 只保存参数
-
-        if (epoch + 1) % 10 == 0:
-            print(f"Epoch {epoch+1:3d} | "
-                  f"Train Loss {train_loss:.4f} Acc {train_acc:.3f} | "
-                  f"Val Loss {val_loss:.4f} Acc {val_acc:.3f} | "
-                  f"LR {scheduler.get_last_lr()[0]:.2e}")
-
-    print(f"最优验证准确率: {best_val_acc:.3f}")
-
+    return policy
 
 # ============================================================
-# 第九部分：模型保存与加载
+# 第七部分：模型保存与加载
 # ============================================================
 
-model = MLP(784, 256, 10)
+def save_agent(model, optimizer, episode, path='rl_agent.pth'):
+    checkpoint = {
+        'episode':         episode,
+        'model_state':     model.state_dict(),     # 网络权重
+        'optimizer_state': optimizer.state_dict(), # 优化器状态（含动量等）
+    }
+    torch.save(checkpoint, path)
+    print(f"模型已保存至 {path}")
 
-# 保存（推荐只保存参数字典，不保存整个模型）
-torch.save(model.state_dict(), 'model_weights.pth')
+def load_agent(model, optimizer, path='rl_agent.pth', device='cpu'):
+    ckpt = torch.load(path, map_location=device)
+    model.load_state_dict(ckpt['model_state'])
+    optimizer.load_state_dict(ckpt['optimizer_state'])
+    start_episode = ckpt['episode']
+    print(f"模型已加载，从第 {start_episode} 个 episode 继续训练")
+    return start_episode
 
-# 加载
-model2 = MLP(784, 256, 10)          # 先创建同架构的模型
-model2.load_state_dict(torch.load('model_weights.pth', map_location='cpu'))
-model2.eval()                        # 加载后记得切换模式
+# Target 网络的权重同步方式：
+def hard_update(online_net, target_net):
+    # 硬更新：直接复制权重（DQN 标准做法，每隔 N 步同步一次）
+    target_net.load_state_dict(online_net.state_dict())
 
-# 保存完整 checkpoint（含优化器状态，可继续训练）
-checkpoint = {
-    'epoch': 10,
-    'model_state': model.state_dict(),
-    'optimizer_state': optimizer.state_dict(),
-    'best_val_acc': 0.95,
-}
-torch.save(checkpoint, 'checkpoint.pth')
-
-# 加载 checkpoint
-ckpt = torch.load('checkpoint.pth', map_location='cpu')
-model.load_state_dict(ckpt['model_state'])
-optimizer.load_state_dict(ckpt['optimizer_state'])
-start_epoch = ckpt['epoch']
-
-# ============================================================
-# 第十部分：CNN 示例（图像分类）
-# ============================================================
-
-class SimpleCNN(nn.Module):
-    def __init__(self, num_classes=10):
-        super().__init__()
-        # 特征提取部分
-        self.features = nn.Sequential(
-            # 输入 (B, 1, 28, 28) —— MNIST 灰度图
-            nn.Conv2d(1, 32, kernel_size=3, padding=1),  # -> (B, 32, 28, 28)
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.MaxPool2d(2),                              # -> (B, 32, 14, 14)
-
-            nn.Conv2d(32, 64, kernel_size=3, padding=1), # -> (B, 64, 14, 14)
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.MaxPool2d(2),                              # -> (B, 64, 7, 7)
-        )
-        # 分类部分
-        self.classifier = nn.Sequential(
-            nn.Flatten(),              # (B, 64*7*7) = (B, 3136)
-            nn.Linear(3136, 128),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(128, num_classes),
-        )
-
-    def forward(self, x):
-        x = self.features(x)
-        x = self.classifier(x)
-        return x
+def soft_update(online_net, target_net, tau=0.005):
+    # 软更新：θ_target = τ*θ_online + (1-τ)*θ_target（DDPG/SAC 常用）
+    for p_online, p_target in zip(online_net.parameters(), target_net.parameters()):
+        p_target.data.copy_(tau * p_online.data + (1 - tau) * p_target.data)
 
 # ============================================================
-# 第十一部分：实用技巧速查
+# 第八部分：实用技巧
 # ============================================================
 
-# ---------- 随机种子（保证实验可复现）----------
+# ---------- 8.1 随机种子（可复现实验）----------
 def set_seed(seed=42):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
-    # 如需完全确定性（会损失性能）：
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    random.seed(seed)
 
-# ---------- 混合精度训练（加速 GPU 训练）----------
-from torch.cuda.amp import autocast, GradScaler
+# ---------- 8.2 ε-贪婪的常见写法 ----------
+def epsilon_greedy(q_values, epsilon, action_dim):
+    if random.random() < epsilon:
+        return random.randint(0, action_dim - 1)     # 随机探索
+    return q_values.argmax().item()                  # 贪婪利用
 
-scaler = GradScaler()   # 梯度缩放器，防止 float16 梯度下溢
+# ---------- 8.3 折扣因子对 returns 的影响 ----------
+# gamma=1.0：看重远期奖励（适合有限 episode）
+# gamma=0.99：稍微偏向近期（CartPole 常用）
+# gamma=0.9：更偏短视（奖励密集时可用）
 
-# 在训练循环中：
-def train_step_amp(model, batch_X, batch_y, optimizer, criterion, scaler):
-    optimizer.zero_grad()
-    with autocast():                  # 自动选择 float16/float32
-        logits = model(batch_X)
-        loss = criterion(logits, batch_y)
-    scaler.scale(loss).backward()     # 缩放后反传
-    scaler.step(optimizer)            # 更新参数
-    scaler.update()                   # 调整缩放因子
+# ---------- 8.4 检查 NaN（训练崩溃的常见原因）----------
+def check_nan(model, loss):
+    if torch.isnan(loss):
+        print("警告：loss 为 NaN，检查学习率或梯度裁剪")
+        return True
+    for name, p in model.named_parameters():
+        if p.grad is not None and torch.isnan(p.grad).any():
+            print(f"警告：{name} 的梯度为 NaN")
+            return True
+    return False
 
-# ---------- 常用调试技巧 ----------
-
-# 检查张量统计
-x = torch.randn(100)
-print(f"mean={x.mean():.3f}, std={x.std():.3f}, min={x.min():.3f}, max={x.max():.3f}")
-
-# 检查是否有 NaN/Inf
-print(torch.isnan(x).any())    # 是否有 NaN
-print(torch.isinf(x).any())    # 是否有 Inf
-
-# 计算模型输出的形状（常用于调试）
-model = SimpleCNN()
-dummy = torch.randn(1, 1, 28, 28)  # batch=1 的假输入
-with torch.no_grad():
-    out = model(dummy)
-print(out.shape)   # torch.Size([1, 10])
+# ---------- 8.5 GPU 加速要点 ----------
+# 1. 模型和张量必须在同一设备
+# 2. 环境交互用 numpy（gym 不支持 tensor），存回放用 numpy，采样后才转 tensor
+# 3. 推理时用 torch.no_grad()，避免占用显存
+# 4. pin_memory=True 可加速 CPU->GPU 的数据传输（DataLoader 场景）
 
 # ============================================================
-# 主程序入口
+# 主程序
 # ============================================================
 
 if __name__ == '__main__':
     set_seed(42)
-    main()
+
+    print("=" * 50)
+    print("训练 DQN")
+    print("=" * 50)
+    trained_q = train_dqn(num_episodes=60)
+
+    print("\n" + "=" * 50)
+    print("训练 REINFORCE")
+    print("=" * 50)
+    trained_policy = train_reinforce(num_episodes=150)
