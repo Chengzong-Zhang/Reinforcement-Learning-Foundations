@@ -245,6 +245,7 @@ print("b.grad:", b.grad)    # tensor(4.)
 # ── 2.4 梯度累积陷阱：.grad 是累积的！────────────────────────────────────────
 # 如果不清零，下次 backward() 会把新梯度加到旧梯度上
 # 在训练循环中必须手动清零（或用 optimizer.zero_grad()）
+assert w.grad is not None and b.grad is not None  # backward 后 grad 必不为 None
 w.grad.zero_()              # 就地清零（in-place，下划线结尾代表就地操作）
 b.grad.zero_()
 
@@ -541,6 +542,7 @@ policy.eval()               # 切换到推理模式（Dropout 关闭，BN 用 ru
 
 # ── 5.4 评估循环（eval loop）────────────────────────────────────────────────
 print("\n--- Eval demo ---")
+policy = policy.to(device)      # policy 移到目标设备，与输入数据保持一致
 policy.eval()
 
 all_losses = []
@@ -609,7 +611,7 @@ print("常见 bug 见注释，不实际执行")
 # 如果直接把 tensor 加入 Python list，会保留计算图，内存泄漏！
 losses_wrong = []
 for _ in range(3):
-    fake_loss = policy(torch.randn(4, 8)).mean()  # 带计算图的 tensor
+    fake_loss = policy(torch.randn(4, 8).to(device)).mean()  # 带计算图的 tensor
     losses_wrong.append(fake_loss.item())          # .item() 正确：返回 Python float
 print("正确累积 loss:", losses_wrong)
 
@@ -627,8 +629,8 @@ print("has inf:", torch.isinf(t).any().item())   # True
 
 # 检查梯度范数（训练时监控，判断是否梯度爆炸/消失）
 policy.train()
-fake_obs = torch.randn(4, 8)
-fake_target = torch.randn(4, 4)
+fake_obs = torch.randn(4, 8).to(device)
+fake_target = torch.randn(4, 4).to(device)
 optimizer.zero_grad()
 fake_pred = policy(fake_obs)
 fake_loss = F.mse_loss(fake_pred, fake_target)
@@ -661,13 +663,20 @@ print("=" * 60)
 # 首次调用时有编译开销（warm-up），之后运行加速
 
 # 用法：只需一行，API 与普通模型完全相同
-compiled_policy = torch.compile(policy)
-
-# 首次调用会触发编译（较慢），之后正常
-with torch.inference_mode():
-    test_obs = torch.randn(16, 8).to(device)
-    out = compiled_policy(test_obs)         # 编译后的前向传播
-    print("compiled output shape:", out.shape)
+# 注意：Windows 上 torch.compile + CUDA 需要 Triton（官方暂不支持 Windows）
+# 生产环境建议用 try-except 优雅降级
+try:
+    compiled_policy = torch.compile(policy)
+    with torch.inference_mode():
+        test_obs = torch.randn(16, 8).to(device)
+        out = compiled_policy(test_obs)     # 编译后的前向传播
+        print("compiled output shape:", out.shape)
+except Exception as e:
+    print(f"torch.compile 不可用（{type(e).__name__}），回退到普通模式")
+    with torch.inference_mode():
+        test_obs = torch.randn(16, 8).to(device)
+        out = policy(test_obs)
+        print("fallback output shape:", out.shape)
 
 # compile 的 mode 参数（权衡编译时间 vs 运行速度）：
 # mode='default'          → 默认，平衡编译时间和速度
