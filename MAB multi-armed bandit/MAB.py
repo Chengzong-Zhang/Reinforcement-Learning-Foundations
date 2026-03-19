@@ -131,7 +131,7 @@ class UCB(Solver):
         return k
 
 
-def plot_results(solvers, solver_names):
+def plot_results(solvers, solver_names, save_path=None):
     """生成累积懊悔随时间变化的图像。输入solvers是一个列表,列表中的每个元素是一种特定的策略。
     而solver_names也是一个列表,存储每个策略的名称"""
     for idx, solver in enumerate(solvers):
@@ -141,6 +141,8 @@ def plot_results(solvers, solver_names):
     plt.ylabel('Cumulative regrets')
     plt.title('%d-armed bandit' % solvers[0].bandit.K)
     plt.legend()
+    if save_path:
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
     plt.show()
 
 
@@ -156,7 +158,7 @@ if __name__ == '__main__':
     epsilon_greedy_solver = EpsilonGreedy(bandit_10_arm, epsilon=0.01)
     epsilon_greedy_solver.run(5000)
     print('epsilon-贪婪算法的累积懊悔为：', epsilon_greedy_solver.regret)
-    plot_results([epsilon_greedy_solver], ["EpsilonGreedy"])
+    plot_results([epsilon_greedy_solver], ["EpsilonGreedy"], save_path="ε-greek.png")
 
     # ── 敏感性分析：不同 ε 值对比 ──────────────────────────────────
     np.random.seed(0)
@@ -167,7 +169,7 @@ if __name__ == '__main__':
     epsilon_greedy_solver_names = ["epsilon={}".format(e) for e in epsilons]
     for solver in epsilon_greedy_solver_list:
         solver.run(5000)
-    plot_results(epsilon_greedy_solver_list, epsilon_greedy_solver_names)
+    plot_results(epsilon_greedy_solver_list, epsilon_greedy_solver_names, save_path="sensitivity analysis.png")
     print('\n── 敏感性分析结论 ──')
     for e, solver in zip(epsilons, epsilon_greedy_solver_list):
         print('ε=%-6s  累积懊悔：%.4f' % (e, solver.regret))
@@ -180,7 +182,8 @@ if __name__ == '__main__':
     ablation_fixed.run(5000)
     ablation_decaying.run(5000)
     plot_results([ablation_fixed, ablation_decaying],
-                 ["EpsilonGreedy(ε=0.01，固定)", "DecayingEpsilonGreedy(衰减)"])
+                 ["EpsilonGreedy(ε=0.01，固定)", "DecayingEpsilonGreedy(衰减)"],
+                 save_path="ablation study.png")
     print('\n── 消融实验结论 ──')
     print('EpsilonGreedy(固定)   累积懊悔：%.4f（线性增长：始终保留固定探索率，懊悔持续累积）' % ablation_fixed.regret)
     print('DecayingEpsilonGreedy 累积懊悔：%.4f（次线性增长：探索率随时间衰减，增长逐渐趋缓）' % ablation_decaying.regret)
@@ -191,4 +194,4 @@ if __name__ == '__main__':
     UCB_solver = UCB(bandit_10_arm, coef)
     UCB_solver.run(5000)
     print('上置信界算法的累积懊悔为：', UCB_solver.regret)
-    plot_results([UCB_solver], ["UCB"])
+    plot_results([UCB_solver], ["UCB"], save_path="UCB.png")
