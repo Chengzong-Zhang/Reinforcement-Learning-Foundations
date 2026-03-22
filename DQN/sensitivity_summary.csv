@@ -1,0 +1,16 @@
+variant,final_mean,final_std
+Learning Rate (lr) | 1e-3,-1189.90,133.74
+Learning Rate (lr) | 1e-2 (default),-242.36,122.72
+Learning Rate (lr) | 1e-1,-941.43,179.96
+Discount Factor (γ) | 0.90,-252.39,105.61
+Discount Factor (γ) | 0.98 (default),-242.36,122.72
+Discount Factor (γ) | 0.99,-238.47,98.76
+Exploration Rate (ε) | 0.001,-230.81,111.52
+Exploration Rate (ε) | 0.01 (default),-242.36,122.72
+Exploration Rate (ε) | 0.10,-281.54,108.24
+Target Update Freq | 1,-1326.06,149.37
+Target Update Freq | 50 (default),-242.36,122.72
+Target Update Freq | 200,-218.92,90.48
+Batch Size | 16,-544.26,221.45
+Batch Size | 64 (default),-242.36,122.72
+Batch Size | 256,-197.39,85.59

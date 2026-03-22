@@ -1,0 +1,7 @@
+variant,final_mean,final_std
+VanillaDQN (baseline),-241.31,115.84
+No Target Network,-1326.06,149.37
+No Replay Buffer,-1475.10,122.52
+Double DQN,-240.44,113.56
+Dueling DQN,-240.48,110.57
+Double + Dueling,-317.54,134.46

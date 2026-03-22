@@ -69,6 +69,8 @@ class DQN:
                              dtype=torch.float).view(-1, 1).to(self.device)   # 终止标志转为列向量，shape=(batch, 1)，值为 0 或 1
 
         q_values = self.q_net(states).gather(1, actions)  # 在线网络前向传播得到所有动作的Q值，再用 gather 按 actions 索引取出实际执行动作的 Q 值，shape=(batch,1)
+
+        
         # Double DQN 与普通 DQN 的核心区别：选动作和评估动作使用不同的网络
         if self.dqn_type == 'DoubleDQN':  # Double DQN 的目标值计算方式
             max_action = self.q_net(next_states).max(1)[1].view(-1, 1)                    # 用在线网络选出下一状态中 Q 值最大的动作索引（"选择"步骤，在线网络做决策）
@@ -151,7 +153,7 @@ def train_DQN(agent, env, num_episodes, replay_buffer, minimal_size, batch_size)
                         '%d' % (num_episodes / 10 * i + i_episode + 1),  # 显示当前是第几个总 episode
                         'return':
                         '%.3f' % np.mean(return_list[-10:])               # 显示最近 10 个 episode 的平均回报
-                    })
+                    }) 
                 pbar.update(1)  # 进度条前进一步（代表完成了一个 episode）
     return return_list, max_q_value_list  # 返回回报列表和 Q 值列表，供后续绘图使用
 
