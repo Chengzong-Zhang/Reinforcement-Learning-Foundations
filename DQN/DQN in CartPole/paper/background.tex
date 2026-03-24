@@ -1,0 +1,75 @@
+%!TEX root = deepqnet.tex
+%\subsection{Reinforcement Learning Framework}
+
+We consider tasks in which an agent interacts with an environment $\mathcal{E}$, in this case the Atari emulator, in a sequence of actions, observations and rewards. 
+At each time-step the agent selects an action $a_t$ from the set of legal game actions, $\mathcal{A}=\{1, \ldots, K \}$. The action is passed to the emulator and modifies its internal state and the game score. In general $\mathcal{E}$ may be stochastic. The emulator's internal state is not observed by the agent; instead it observes an image $x_t \in \mathbb{R}^d$ from the emulator, which is a vector of raw pixel values representing the current screen. In addition it receives a reward $r_t$ representing the change in game score. Note that in general the game score may depend on the whole prior sequence of actions and observations; feedback about an action may only be received after many thousands of time-steps have elapsed. 
+
+Since the agent only observes images of the current screen, the task is partially observed and many emulator states are perceptually aliased, i.e. it is impossible to fully understand the current situation from only the current screen $x_t$. We therefore consider sequences of actions and observations, $s_t = {x_1, a_1, x_2, ..., a_{t-1}, x_t}$, and learn game strategies that depend upon these sequences. All sequences in the emulator are assumed to terminate in a finite number of time-steps. This formalism gives rise to a large but finite Markov decision process (MDP) in which each sequence is a distinct state. As a result, we can apply standard reinforcement learning methods for MDPs, simply by using the complete sequence $s_t$ as the state representation at time $t$.
+
+The goal of the agent is to interact with the emulator by selecting actions in a way that maximises future rewards. We make the standard assumption that future rewards are discounted by a factor of $\gamma$ per time-step, and define the future discounted \emph{return} at time $t$ as $R_t = \sum_{t'=t}^{T} \gamma^{t'-t} r_{t'}$, where $T$
+is the time-step at which the game terminates. We define the optimal action-value function $Q^*(s,a)$ as the maximum expected return achievable by following any strategy, after seeing some sequence $s$ and then taking some action $a$, $Q^*(s,a) = \max_{\pi} \expect{ R_t | s_t=s, a_t=a, \pi }$, where $\pi$ is a policy mapping sequences to actions (or distributions over actions).
+
+The optimal action-value function obeys an important identity known as the \emph{Bellman equation}. This is based on the following intuition: if the optimal value $Q^*(s',a')$ of the sequence $s'$ at the next time-step was known for all possible actions $a'$, then the optimal strategy is to select the action $a'$ maximising the expected value of $r + \gamma Q^*(s',a')$,
+%
+\begin{align}
+Q^*(s,a) &= \expectx{s' \sim \mathcal{E}}{ r + \gamma \max_{a'} Q^*(s', a') \Big| s, a }
+\end{align}
+%
+The basic idea behind many reinforcement learning algorithms is to estimate the action-value function, by using the Bellman equation as an iterative update, $Q_{i+1}(s,a) = \mathbb{E}\left[ r + \gamma \max_{a'} Q_i(s', a') | s, a \right]$. Such \emph{value iteration} algorithms converge to the optimal action-value function, $Q_i \rightarrow Q^*$ as $i \rightarrow \infty$ \cite{sutton:book}. In practice, this basic approach is totally impractical, because the action-value function is estimated separately for each sequence, without any generalisation. Instead, it is common to use a function approximator to estimate the action-value function, $Q(s,a; \theta) \approx Q^*(s,a)$. In the reinforcement learning community this is typically a linear function approximator, but sometimes a non-linear function approximator is used instead, such as a neural network. We refer to a neural network function approximator with weights $\theta$ as a Q-network. A Q-network can be trained by minimising a sequence of loss functions $L_i(\theta_i)$ that changes at each iteration $i$,
+%
+\begin{align}
+L_i\left(\theta_i\right) &= \expectx{s,a \sim \rho(\cdot)}{\left(y_i - Q \left(s,a ; \theta_i \right) \right)^2},
+\label{eq:q-learning-loss}
+\end{align}
+%
+where $y_i = \expectx{s' \sim \mathcal{E}}{r + \gamma \max_{a'} Q(s', a'; \theta_{i-1}) | s, a }$ is the target for iteration $i$ and $\rho(s,a)$ is a probability distribution over sequences $s$ and actions $a$ that we refer to as the \emph{behaviour distribution}. The parameters from the previous iteration $\theta_{i-1}$ are held fixed when optimising the loss function $L_i\left(\theta_i\right)$. 
+Note that the targets depend on the network weights; this is in contrast with the targets used for supervised learning, which are fixed before learning begins.
+% This can lead to feedback effects and even divergence during training, which is a major reason why reinforcement learning is more challenging than supervised learning.
+Differentiating the loss function with respect to the weights we arrive at the following gradient,
+%
+\begin{align}
+\nabla_{\theta_i} L_i\left(\theta_i\right) &= \mathbb{E}_{s,a \sim \rho(\cdot); s' \sim \mathcal{E}} \left[ \left( r + \gamma \max_{a'} Q(s', a'; \theta_{i-1}) - Q(s,a ; \theta_i ) \right) \nabla_{\theta_i} Q(s,a;\theta_{i}) \right] .
+\label{eq:q-learning-gradient}
+\end{align}
+%
+Rather than computing the full expectations in the above gradient, it is often computationally expedient to optimise the loss function by stochastic gradient descent. If the weights are updated after every time-step, and the expectations are replaced by single samples from the behaviour distribution $\rho$ and the emulator $\mathcal{E}$ respectively, then we arrive at the familiar \emph{Q-learning} algorithm \cite{watkins-qlearning}. 
+
+Note that this algorithm is \emph{model-free}: it solves the reinforcement learning task directly using samples from the emulator $\mathcal{E}$, without explicitly constructing an estimate of $\mathcal{E}$. It is also \emph{off-policy}: it learns about the greedy strategy $a = \max_{a} Q(s,a;\theta)$, while following a behaviour distribution that ensures adequate exploration of the state space. In practice, the behaviour distribution is often selected by an $\epsilon$-greedy strategy that follows the greedy strategy with probability $1 - \epsilon$ and selects a random action with probability $\epsilon$.
+
+\section{Related Work}
+
+Perhaps the best-known success story of reinforcement learning is \emph{TD-gammon}, a backgammon-playing program which learnt entirely by reinforcement learning and self-play, and achieved a super-human level of play~\cite{tesauro-95-backgammon}. TD-gammon used a model-free reinforcement learning algorithm similar to Q-learning, and approximated the value function using a multi-layer perceptron with one hidden layer\footnote{In fact TD-Gammon approximated the state value function $V(s)$ rather than the action-value function $Q(s,a)$, and learnt \emph{on-policy} directly from the self-play games}. 
+
+However, early attempts to follow up on TD-gammon, including applications of the same method to chess, Go and checkers were less successful. This led to a widespread belief that the TD-gammon approach was a special case that only worked in backgammon, perhaps because the stochasticity in the dice rolls helps explore the state space and also makes the value function particularly smooth \cite{pollack:td-gammon}.
+
+Furthermore, it was shown that combining model-free reinforcement learning algorithms such as Q-learning with non-linear function approximators \cite{tsitsiklis:td-convergence}, or indeed with off-policy learning \cite{baird:residual} could cause the Q-network to diverge. Subsequently, the majority of work in reinforcement learning focused on linear function approximators with better convergence guarantees \cite{tsitsiklis:td-convergence}.
+
+More recently, there has been a revival of interest in combining deep learning with reinforcement learning. Deep neural networks have been used to estimate the environment $\mathcal{E}$; restricted Boltzmann machines have been used to estimate the value function \cite{sallans:rbm}; or the policy \cite{heess:energy-based}. In addition, the divergence issues with Q-learning have been partially addressed by \emph{gradient temporal-difference} methods. These methods are proven to converge when evaluating a fixed policy with a nonlinear function approximator \cite{maei:nonlinear}; or when learning a control policy with linear function approximation using a restricted variant of Q-learning \cite{maei:gq}. However, these methods have not yet been extended to nonlinear control.
+
+Perhaps the most similar prior work to our own approach is neural fitted Q-learning (NFQ) \cite{riedmiller-nfq}. NFQ optimises the sequence of loss functions in Equation \ref{eq:q-learning-loss}, using the RPROP algorithm to update the parameters of the Q-network. However, it uses a batch update that has a computational cost per iteration that is proportional to the size of the data set, whereas we consider stochastic gradient updates that have a low constant cost per iteration and scale to large data-sets. NFQ has also been successfully applied to simple real-world control tasks using purely visual input, by first using deep autoencoders to learn a low dimensional representation of the task, and then applying NFQ to this representation \cite{lange:dfq}. In contrast our approach applies reinforcement learning end-to-end, directly from the visual inputs; as a result it may learn features that are directly relevant to discriminating action-values.  Q-learning has also previously been combined with experience replay and a simple neural network \cite{lin1993reinforcement}, but again starting with a low-dimensional state rather than raw visual inputs.
+
+The use of the Atari 2600 emulator as a reinforcement learning platform was introduced by \cite{bellemare-ale}, who applied standard reinforcement learning algorithms with linear function approximation and generic visual features. Subsequently, results were improved by using a larger number of features, and using tug-of-war hashing to randomly project the features into a lower-dimensional space~\cite{bellemare2012sketch}. The HyperNEAT evolutionary architecture \cite{hausknecht-neuro} has also been applied to the Atari platform, where it was used to evolve (separately, for each distinct game) a neural network representing a strategy for that game. When trained repeatedly against deterministic sequences using the emulator's reset facility, these strategies were able to exploit design flaws in several Atari games. 
+
+%MOVE THIS TO DISCUSSION
+%Comparing this formalization of the problem with supervised learning, one can see that each observation $s_t$ is like a sample from a dataset and the reward $r_t$ is reminiscent of a label associated with a data point. However, the number of reward signals $r_t$ is much less compared to the data points. In general a reward signal is received after thousands or even hundreds of thousands steps later. Moreover, since the samples $s_t$ are streamed in from the environment like a video, they are highly correlated with each other.
+
+%\subsection{ATARI 2600 Environment}
+
+%The majority of prior work in reinforcement learning has been limited to environments in which a relatively small number of inputs fully describe the environment's state; furthermore, there is a single task of interest and so it is possible to hand construct features that are tailored to the task. In contrast, the Atari emulator is partially observable, receiving $210 \times 160$ RGB video input at 60Hz and since there are a wide variety of tasks to consider, it is hard to handcraft general-purpose features. 
+
+%The Atari 2600 represents a major challenge for reinforcement learning. The goal is to design a single reinforcement learning algorithm that can play a wide variety of Atari 2600 console games. The task is designed to mirror the setup that a human might face, if presented with a novel Atari game: the agent is not provided with any prior knowledge about the game, is not privy to the internal state of the emulator, and can only interact with the emulator by observing pixel video input, and selecting one of 18 actions ($3 \times 3$ joystick positions, and whether or not to press the ``fire" button) at each frame.
+
+%The Arcade Learning Environment (ALE)~\cite{bellemare-ale} is a platform enabling reinforcement learning agents to interact with an emulator of the Atari 2600 console. It contains many of the original Atari 2600 console games, instrumented by a reward function that typically corresponds to the change in score at each frame. The Atari games make up a diverse and interesting set of reinforcement learning tasks that were designed to be challenging for humans players. Figure~\ref{fig-games} provides sample screenshots of five games.
+
+% \begin{figure}
+% \includegraphics[width=0.195\linewidth]{figures/pong}
+% \includegraphics[width=0.195\linewidth]{figures/breakout}
+% \includegraphics[width=0.195\linewidth]{figures/space_invaders}
+% \includegraphics[width=0.195\linewidth]{figures/seaquest}
+% \includegraphics[width=0.195\linewidth]{figures/beamrider}
+% \caption{\label{fig-games} \emph{Left-to-right:} Pong, Breakout, Space Invaders, Seaquest, Beam Rider. Screen shots for the games that are used for training.}
+% \end{figure}
+
+
+%In the emulation loop, the environment waits for the agent to select an action, and once the action is sent to the environment, the game is run forward for a single frame with the chosen action and the resulting game state is returned to the agent. The state information contains the screen pixels, a boolean flag encoding whether the state is terminal or not, and  the reward value. %which is a numeric value of arbitrary scale and which is $0$ most of the time as discussed earlier.
+

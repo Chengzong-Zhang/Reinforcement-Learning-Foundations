@@ -1,0 +1,153 @@
+\begin{thebibliography}{10}
+
+\bibitem{baird:residual}
+Leemon Baird.
+\newblock Residual algorithms: Reinforcement learning with function
+  approximation.
+\newblock In {\em Proceedings of the 12th International Conference on Machine
+  Learning (ICML 1995)}, pages 30--37. Morgan Kaufmann, 1995.
+
+\bibitem{bellemare2012sketch}
+Marc Bellemare, Joel Veness, and Michael Bowling.
+\newblock Sketch-based linear value function approximation.
+\newblock In {\em Advances in Neural Information Processing Systems 25}, pages
+  2222--2230, 2012.
+
+\bibitem{bellemare-ale}
+Marc~G Bellemare, Yavar Naddaf, Joel Veness, and Michael Bowling.
+\newblock The arcade learning environment: An evaluation platform for general
+  agents.
+\newblock {\em Journal of Artificial Intelligence Research}, 47:253--279, 2013.
+
+\bibitem{bellemare-contingency}
+Marc~G Bellemare, Joel Veness, and Michael Bowling.
+\newblock Investigating contingency awareness using atari 2600 games.
+\newblock In {\em AAAI}, 2012.
+
+\bibitem{bellemare:qtf}
+Marc~G. Bellemare, Joel Veness, and Michael Bowling.
+\newblock Bayesian learning of recursively factored environments.
+\newblock In {\em Proceedings of the Thirtieth International Conference on
+  Machine Learning (ICML 2013)}, pages 1211--1219, 2013.
+
+\bibitem{dahl-speech}
+George~E. Dahl, Dong Yu, Li~Deng, and Alex Acero.
+\newblock Context-dependent pre-trained deep neural networks for
+  large-vocabulary speech recognition.
+\newblock {\em Audio, Speech, and Language Processing, IEEE Transactions on},
+  20(1):30 --42, January 2012.
+
+\bibitem{graves-speech}
+Alex Graves, Abdel-rahman Mohamed, and Geoffrey~E. Hinton.
+\newblock Speech recognition with deep recurrent neural networks.
+\newblock In {\em Proc. ICASSP}, 2013.
+
+\bibitem{hausknecht-neuro}
+Matthew Hausknecht, Risto Miikkulainen, and Peter Stone.
+\newblock A neuro-evolution approach to general atari game playing.
+\newblock 2013.
+
+\bibitem{heess:energy-based}
+Nicolas Heess, David Silver, and Yee~Whye Teh.
+\newblock Actor-critic reinforcement learning with energy-based policies.
+\newblock In {\em European Workshop on Reinforcement Learning}, page~43, 2012.
+
+\bibitem{jarrett-best}
+Kevin Jarrett, Koray Kavukcuoglu, Marc’Aurelio Ranzato, and Yann LeCun.
+\newblock What is the best multi-stage architecture for object recognition?
+\newblock In {\em Proc. International Conference on Computer Vision and Pattern
+  Recognition (CVPR 2009)}, pages 2146--2153. IEEE, 2009.
+
+\bibitem{krizhevsky-imagenet}
+Alex Krizhevsky, Ilya Sutskever, and Geoff Hinton.
+\newblock Imagenet classification with deep convolutional neural networks.
+\newblock In {\em Advances in Neural Information Processing Systems 25}, pages
+  1106--1114, 2012.
+
+\bibitem{lange:dfq}
+Sascha Lange and Martin Riedmiller.
+\newblock Deep auto-encoder neural networks in reinforcement learning.
+\newblock In {\em Neural Networks (IJCNN), The 2010 International Joint
+  Conference on}, pages 1--8. IEEE, 2010.
+
+\bibitem{lin1993reinforcement}
+Long-Ji Lin.
+\newblock Reinforcement learning for robots using neural networks.
+\newblock Technical report, DTIC Document, 1993.
+
+\bibitem{maei:nonlinear}
+Hamid Maei, Csaba Szepesvari, Shalabh Bhatnagar, Doina Precup, David Silver,
+  and Rich Sutton.
+\newblock {Convergent Temporal-Difference Learning with Arbitrary Smooth
+  Function Approximation}.
+\newblock In {\em Advances in Neural Information Processing Systems 22}, pages
+  1204--1212, 2009.
+
+\bibitem{maei:gq}
+Hamid Maei, Csaba Szepesv{\'a}ri, Shalabh Bhatnagar, and Richard~S. Sutton.
+\newblock Toward off-policy learning control with function approximation.
+\newblock In {\em Proceedings of the 27th International Conference on Machine
+  Learning (ICML 2010)}, pages 719--726, 2010.
+
+\bibitem{mnih-thesis}
+Volodymyr Mnih.
+\newblock {\em Machine Learning for Aerial Image Labeling}.
+\newblock PhD thesis, University of Toronto, 2013.
+
+\bibitem{moore:prioritized}
+Andrew Moore and Chris Atkeson.
+\newblock Prioritized sweeping: Reinforcement learning with less data and less
+  real time.
+\newblock {\em Machine Learning}, 13:103--130, 1993.
+
+\bibitem{nair-relu}
+Vinod Nair and Geoffrey~E Hinton.
+\newblock Rectified linear units improve restricted boltzmann machines.
+\newblock In {\em Proceedings of the 27th International Conference on Machine
+  Learning (ICML 2010)}, pages 807--814, 2010.
+
+\bibitem{pollack:td-gammon}
+Jordan~B. Pollack and Alan~D. Blair.
+\newblock Why did td-gammon work.
+\newblock In {\em Advances in Neural Information Processing Systems 9}, pages
+  10--16, 1996.
+
+\bibitem{riedmiller-nfq}
+Martin Riedmiller.
+\newblock Neural fitted q iteration--first experiences with a data efficient
+  neural reinforcement learning method.
+\newblock In {\em Machine Learning: ECML 2005}, pages 317--328. Springer, 2005.
+
+\bibitem{sallans:rbm}
+Brian Sallans and Geoffrey~E. Hinton.
+\newblock Reinforcement learning with factored states and actions.
+\newblock {\em Journal of Machine Learning Research}, 5:1063--1088, 2004.
+
+\bibitem{sermanet-cvpr-2013}
+Pierre Sermanet, Koray Kavukcuoglu, Soumith Chintala, and Yann LeCun.
+\newblock Pedestrian detection with unsupervised multi-stage feature learning.
+\newblock In {\em Proc. International Conference on Computer Vision and Pattern
+  Recognition (CVPR 2013)}. IEEE, 2013.
+
+\bibitem{sutton:book}
+Richard Sutton and Andrew Barto.
+\newblock {\em Reinforcement Learning: An Introduction}.
+\newblock MIT Press, 1998.
+
+\bibitem{tesauro-95-backgammon}
+Gerald Tesauro.
+\newblock Temporal difference learning and td-gammon.
+\newblock {\em Communications of the ACM}, 38(3):58--68, 1995.
+
+\bibitem{tsitsiklis:td-convergence}
+John~N Tsitsiklis and Benjamin Van~Roy.
+\newblock An analysis of temporal-difference learning with function
+  approximation.
+\newblock {\em Automatic Control, IEEE Transactions on}, 42(5):674--690, 1997.
+
+\bibitem{watkins-qlearning}
+Christopher~JCH Watkins and Peter Dayan.
+\newblock Q-learning.
+\newblock {\em Machine learning}, 8(3-4):279--292, 1992.
+
+\end{thebibliography}

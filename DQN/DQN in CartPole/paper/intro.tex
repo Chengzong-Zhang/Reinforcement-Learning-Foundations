@@ -1,0 +1,132 @@
+%!TEX root = deepqnet.tex
+% [Poblem intro]
+% Learning to control agents directly from high-dimensional sensory inputs is one of the long-standing challenges of reinforcement learning.
+% This is a difficult problem because in order to learn a control policy one needs to have a good representation of the high-dimensional input.
+% Most applications of reinforcement learning to high-dimensional state spaces have relied on hand-crafted features and used policies that are
+% linear functions of the features.  [Elaborate on why this is unlikely to scale up to real-world problems.]
+
+% [Why deep learning?] The problem of learning representation of high-dimensional sensory data has been the focus of the field of deep learning, and recent
+% advances in models and learning algorithms have led to breakthroughs in both computer vision [CITE: Krizhevsky,Sermanet,Koray,..] and speech recognition [CITE: Dahl et al.]. 
+% Given the successes of deep learning methods on these tasks, we consider using convolutional neural networks to learn control policies directly from pixel inputs by training them with reinforcement learning methods.   
+
+% [Why this goes against current conventional wisdom in RL]
+% While neural networks were used in some of the earliest successful applications of reinforcement learning, with Tesauro's landmark backgammon player being the most notable example, much of the recent work has focused on linear methods with provable optimality guarantees.  
+
+% [Why RL with neural nets is not easy] In addition to concerns about the convergence of standard RL methods when used with non-linear models, it is also unclear whether the training signal provided by reinforcement learning is sufficient for training large convolutional neural networks.   Indeed, many of the successful applications of convolutional neural networks benefit from using a large set of labeled training examples while the reward signal provided by RL is often delayed, sparse, and noisy making learning challenging even when hand-crafted features and linear models are used.  
+
+% [Our contributions]
+% We present an online variant of the Q-learning algorithm and show that it can be used to successfully learn policies parameterised by neural networks.  We demonstrate the power of the approach by showing how it can be used to learn to play several Atari 2600 video games at the human level directly from the pixel observations and without any feature engineering.  
+
+Learning to control agents directly from high-dimensional sensory inputs like vision and speech is one of the long-standing challenges of reinforcement learning (RL). 
+Most successful RL applications that operate on these domains have relied on hand-crafted features combined with linear value functions or policy representations. 
+Clearly, the performance of such systems heavily relies on the quality of the feature representation. % and despite many successful algorithms \cite{lowe-04} \note{Cite MFCC for speech} finding useful features for rich sensory domains is still an unsolved problem.
+
+Recent advances in deep learning have made it possible to extract high-level features from raw sensory data, leading to breakthroughs in computer vision~\cite{krizhevsky-imagenet, sermanet-cvpr-2013, mnih-thesis} and speech recognition~\cite{dahl-speech,graves-speech}.
+These methods utilise a range of neural network architectures, including convolutional networks, multilayer perceptrons, restricted Boltzmann machines and recurrent neural networks, and have exploited both supervised and unsupervised learning. 
+It seems natural to ask whether similar techniques could also be beneficial for RL with sensory data.
+
+% 
+% 
+% 
+% Although some of the earliest successful applications of reinforcement learning used neural networks~\cite{tesauro-95-backgammon}, modern deep learning has received little attention in the RL community.
+
+However reinforcement learning presents several challenges from a deep learning perspective.
+% NOT TRUE: CHANGE TO (1) SEEMS NATURAL THAT DEEP NETS SHOULD BE GOOD FOR RL TOO; BUT (2) THERE ARE SEVERAL CHALLENGES THAT MUST BE MET
+Firstly, most successful deep learning applications to date have required large amounts of hand-labelled training data.
+RL algorithms, on the other hand, must be able to learn from a scalar reward signal that is frequently sparse, noisy and delayed.
+The delay between actions and resulting rewards, which can be thousands of timesteps long, seems particularly daunting when compared to the direct association between inputs and targets found in supervised learning.
+Another issue is that most deep learning algorithms assume the data samples to be independent, while in reinforcement learning one typically encounters sequences of highly correlated states.
+Furthermore, in RL the data distribution changes as the algorithm learns new behaviours, which can be problematic for deep learning methods that assume a fixed underlying distribution.
+% Lastly, it is not widely known how to train RL models with stochastic gradient descent---a crucial element of the recent successes of deep networks.
+
+% Conversely, neural networks can seem unappealing to the RL community because they lack the provable optimality guarantees that come with linear models.
+
+This paper demonstrates that a convolutional neural network can overcome these challenges to learn successful control policies from raw video data in complex RL environments.
+% Experience replay memory is used to alleviate the problems of correlated data and non-stationary distributions.
+The network is trained with a variant of the Q-learning~\cite{watkins-qlearning} algorithm, with stochastic gradient descent to update the weights.
+% We introduce a novel experience replay mechanism that randomly samples previous transitions and thereby smooths the observed data over many past behaviours.
+% This alleviates the problems of correlated data and non-stationary distributions.
+To alleviate the problems of correlated data and non-stationary distributions, we use an experience replay mechanism~\cite{lin1993reinforcement} which randomly samples previous transitions, and thereby smooths the training distribution over many past behaviors.
+% The network is trained using an online variant of the Q-learning~\cite{watkins-qlearning} algorithm, which makes it possible to adapt the weights with stochastic gradient descent.
+
+
+We apply our approach to a range of Atari 2600 games implemented in The Arcade Learning Environment (ALE)~\cite{bellemare-ale}.
+Atari 2600 is a challenging RL testbed that presents agents with a high dimensional visual input ($210 \times 160$ RGB video at 60Hz) and a diverse and interesting set of tasks that were designed to be difficult for humans players.
+% The goal is to design a single algorithm able to learn as many of the games as possible.
+% We therefore did not provide the network with any game-specific information, and did not alter the architecture or training method between games.
+% Furthermore the network did not use any hand-designed visual features; it learned from nothing but the video input, the reward and terminal signals, and the set of possible actions---just as a human player would. 
+% 
+% 
+Our goal is to create a single neural network agent that is able to successfully learn to play as many of the games as possible.
+The network was not provided with any game-specific information or hand-designed visual features, and was not privy to the internal state of the emulator; it learned from nothing but the video input, the reward and terminal signals, and the set of possible actions---just as a human player would.
+Furthermore the network architecture and all hyperparameters used for training were kept constant across the games.
+So far the network has outperformed all previous RL algorithms on six of the seven games we have attempted and surpassed an expert human player on three of them.
+Figure~\ref{fig-games} provides sample screenshots from five of the games used for training.
+
+
+% So far it has succeeded in doing this for all seven of the games we have applied it to.
+% 
+% 
+% The goal is to design a single reinforcement learning algorithm that can play a wide variety of Atari 2600 console games. 
+% 
+% Our goal was to design a single agent capable of learning to play as 
+% 
+% 
+% The goal of the ALE is to design a single reinforcement learning algorithm that can play a wide variety of Atari 2600 console games. 
+% 
+% The majority of prior work in reinforcement learning has been limited to environments in which a relatively small number of inputs fully describe the environment's state; furthermore, there is a single task of interest and so it is possible to hand construct features that are tailored to the task. In contrast, the Atari emulator is partially observable, receiving $210 \times 160$ RGB video input at 60Hz; furthermore there are a wide variety of tasks to consider and it is hard to handcraft general-purpose features. 
+% 
+% The Atari 2600 represents a major challenge for reinforcement learning. The goal is to design a single reinforcement learning algorithm that can play a wide variety of Atari 2600 console games. The task is designed to mirror the setup that a human might face, if presented with a novel Atari game: the agent is not provided with any prior knowledge about the game, is not privy to the internal state of the emulator, and can only interact with the emulator by observing $210 \times 160$ pixel video input at 60 frames per second, and selecting one of 18 actions ($3 \times 3$ joystick positions, and whether or not to press the ``fire" button) at each frame.
+% 
+% The Arcade Learning Environment (ALE)~\cite{bellemare-ale} is a platform enabling reinforcement learning agents to interact with an emulator of the Atari 2600 console. It contains many of the original Atari 2600 console games, instrumented by a reward function that typically corresponds to the change in score at each frame. The Atari games make up a diverse and interesting set of reinforcement learning tasks that were designed to be challenging for humans players. In this paper work, we have focused on evaluating our method on five games, namely Pong, Breakout, Space Invaders, Seaquest and Beam Rider. Figure~\ref{fig-games} provides sample screenshots of each of these five games.
+
+\begin{figure}
+\includegraphics[width=0.195\linewidth]{figures/pong}
+\includegraphics[width=0.195\linewidth]{figures/breakout}
+\includegraphics[width=0.195\linewidth]{figures/space_invaders}
+\includegraphics[width=0.195\linewidth]{figures/seaquest}
+\includegraphics[width=0.195\linewidth]{figures/beamrider}
+\caption{\label{fig-games} Screen shots from five Atari 2600 Games: (\emph{Left-to-right}) Pong, Breakout, Space Invaders, Seaquest, Beam Rider}
+\end{figure}
+
+% In order to demonstrate the power of our approach, we use Atari 2600 video games from the Arcade Learning Environment~\cite{bellemare-ale} as our testbed. These games provide an interesting challenge for reinforcement learning because they were designed to be challenging for humans and have a high-dimensional visual input space. Our agents learn to play Atari games directly from the raw pixel inputs and do not use any hand-designed features or examples of human play.  Our method achieved a level of competency comparable to or better than a beginner human player on all seven games we attempted and surpassed an expert human player on three of the games.
+%The models are trained not to play a single game mimicking human players, which would be similar to supervised learning. In contrast, they are trained using only the screen pixels with no additional information and they can learn to successfully play any given ATARI game.
+
+% Background information on reinforcement learning is provided in Section 2. An overview of related work is given in Section 3. Our approach is described in detail in Section 4,  experimental results are in Section 5, and concluding remarks are in Section 6.
+
+
+
+
+
+% In addition to the concerns about the convergence of standard RL methods when used with non-linear models, it is also unclear whether the training signal provided by reinforcement learning is sufficient for training large convolutional neural networks. Indeed, while many of the successful applications of convolutional neural networks benefit from using a large set of labeled training examples, the reward signal provided by RL is often delayed, sparse, and noisy. Despite these challenges, we show that deep convolutional networks can be successfully trained to learn control policies in challenging RL environments. One of the keys to achieving this goal is to use RL algorithms that can scale to large amounts of data needed to train a convolutional network. To that end, we have developed an online variant of the Q-learning~\cite{watkins-qlearning} algorithm with an experience replay memory that makes it possible to train the network with stochastic gradient updates.
+
+
+
+% 
+%  
+% So far however, the use of deep networks for reinforcement learning has received little attention.
+% The question addressed by this paper is whether reinforcement learning 
+% A natural question is whether the processing power of deep networks can be 
+% The goal of this paper is to explore the application of deep networks to reinforcement learning
+% Several challenges specific to reinforcement learning 
+% The application of deep networks to reinforcement learning is challenging for several reasons.
+% Several challenges must be addressed to 
+% Firstly,  deep learning have depended heavily on the existence of very large 
+% Reinforcement learning brings several challenges
+
+
+
+% On the other hand, learning representations of sensory data has been the focus of deep learning methods, and recent advances in models and learning algorithms have led to breakthroughs in both computer vision~\cite{krizhevsky-imagenet, sermanet-cvpr-2013, mnih-thesis} and speech recognition~\cite{dahl-speech} tasks.   While both purely supervised methods and combinations of supervised and unsupervised learning have been used in these successful applications, most of them relied on large supervised training sets and deep convolutional neural networks. 
+%In all of these cases, either pure supervised or a combination of supervised and unsupervised learning methods have been used and the authors have observed that with increased amount of supervised data, training larger networks consistently produced better performance.
+
+% Despite their success on these and many other machine learning tasks, neural networks are relatively underexplored in reinforcement learning. 
+% Although some of the earliest successful applications of reinforcement learning used neural networks~\cite{tesauro-95-backgammon}, much of the recent work has focused on linear models, which, unlike non-linear models, come with provable optimality guarantees.
+
+% In addition to the concerns about the convergence of standard RL methods when used with non-linear models, it is also unclear whether the training signal provided by reinforcement learning is sufficient for training large convolutional neural networks. Indeed, while many of the successful applications of convolutional neural networks benefit from using a large set of labeled training examples, the reward signal provided by RL is often delayed, sparse, and noisy. Despite these challenges, we show that deep convolutional networks can be successfully trained to learn control policies in challenging RL environments. One of the keys to achieving this goal is to use RL algorithms that can scale to large amounts of data needed to train a convolutional network. To that end, we have developed an online variant of the Q-learning~\cite{watkins-qlearning} algorithm with an experience replay memory that makes it possible to train the network with stochastic gradient updates.
+
+% In order to demonstrate the power of our approach, we use Atari 2600 video games from the Arcade Learning Environment~\cite{bellemare-ale} as our testbed. These games provide an interesting challenge for reinforcement learning because they were designed to be challenging for humans and have a high-dimensional visual input space. Our agents learn to play Atari games directly from the raw pixel inputs and do not use any hand-designed features or examples of human play.  Our method achieved a level of competency comparable to or better than a beginner human player on all seven games we attempted and surpassed an expert human player on three of the games.
+% %The models are trained not to play a single game mimicking human players, which would be similar to supervised learning. In contrast, they are trained using only the screen pixels with no additional information and they can learn to successfully play any given ATARI game.
+% 
+% The RL background is provided in Section 2, our approach is outlined in detail in section 3, experimental results on the Atari games are presented in Section 4, and conclusions and directions for future work are given in Section 5.
+
+

@@ -1,0 +1,15 @@
+%!TEX root = deepqnet.tex
+This paper introduced a new deep learning model for reinforcement learning, and demonstrated its ability to master difficult control policies for Atari 2600 computer games, using only raw pixels as input.
+We also presented a variant of online Q-learning that combines stochastic minibatch updates with experience replay memory to ease the training of deep networks for RL.
+Our approach gave state-of-the-art results in six of the seven games it was tested on, with no adjustment of the architecture or hyperparameters.
+%As far as we are aware this is the first work to successfully train a deep network to learn control policies direct from visual data.
+% In the future we intend to test our approach on all the games in the Arcade Learning Environment to allow a complete comparison with the other models shown in~\cite{bellemare-ale,hausknecht-neuro}, and also to extend it to more realistic environments.
+% Furthermore, there are numerous ways in which the model could be enhanced, including a more selective form of action replay that focuses learning on salient experiences, and an improved transmission of reward signals that retrains information about their relative strengths.
+% The deep reinforcement learning story has only just begun.
+
+% 
+% 
+% 
+% In this paper, we have presented a new deep learning model that can successfully learn control policies. We have trained an end-to-end model on the raw RGB input space without any feature engineering. We have also presented a variant of Q-Learning algorithm~\cite{watkins-qlearning} that is modified to train large neural networks for RL. In order to evaluate our approach we have used the challenging ATARI game environment. We have tested our approach so far on seven games and using the same architecture and hyper parameter settings we have achieved best results on six games. We believe this is the first work that shows deep neural networks can learn successful control policies on raw pixel space inputs.
+% 
+% Our future goals include, training without reward clipping so that the agents can differentiate between rewards of all magnitudes. In addition, we would like to test our model on all ATARI benchmark games for a complete comparison with other models as shown in~\cite{bellemare-ale,hausknecht-neuro}.

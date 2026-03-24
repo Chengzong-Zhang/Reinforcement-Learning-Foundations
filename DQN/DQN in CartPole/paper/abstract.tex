@@ -1,0 +1,20 @@
+%!TEX root = deepqnet.tex
+
+% Recent advances in deep learning have led to significant progress in computer vision applications. Both supervised and unsupervised models have been shown to perform better than many engineered vision pipelines. On the other hand, the use of deep learning models on reinforcement learning (RL) problems with visual inputs has been very limited. %The main reason for this is the remarkably hard nature of the RL domain where the reward signal is very noisy and sparse compared to the supervised learning setting.
+% <<<<<<< HEAD
+We present the first deep learning model to successfully learn control policies directly from high-dimensional sensory input using reinforcement learning. 
+The model is a convolutional neural network, trained with a variant of Q-learning, whose input is raw pixels and whose output is a value function estimating future rewards.
+We apply our method to seven Atari 2600 games from the Arcade Learning Environment, with no adjustment of the architecture or learning algorithm.
+We find that it outperforms all previous approaches on six of the games and surpasses a human expert on three of them.
+% show that a single architecture and learning algorithm surpasses a human expert across several Atari 2600 games.
+% 
+% 
+% learn good policies using raw pixels as input without the use of any hand-engineered features. 
+% Our method is able to learn policies that match or surpass a human expert.
+% =======
+% We present the first deep learning model to succesfully learn control policies directly from high-dimensional sensory inputs using reinforcement learning. 
+% %The model is a convolutional neural network that learn
+% In particular, we use a convolutional neural network to directly parameterise a policy's action value function and use a variant of Q-learning to train the network.  
+% We apply our method to a number of Atari 2600 games and show that it can learn good policies using raw pixels as input without the use of any hand-engineered features. 
+% Our method is able to learn policies that match or surpass a human player.
+% >>>>>>> 595178280434ba7482f98f6ccdfe42dbcc033268

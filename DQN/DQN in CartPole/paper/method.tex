@@ -1,0 +1,80 @@
+%!TEX root = deepqnet.tex
+
+Recent breakthroughs in computer vision and speech recognition have relied on efficiently training deep neural networks on very large training sets.
+The most successful approaches are trained directly from the raw inputs, using lightweight updates based on stochastic gradient descent. By feeding sufficient data into deep neural networks, it is often possible to learn better representations than handcrafted features \cite{krizhevsky-imagenet}. These successes motivate our approach to reinforcement learning. Our goal is to connect a reinforcement learning algorithm to a deep neural network which operates directly on RGB images and efficiently process training data by using stochastic gradient updates. 
+
+Tesauro's TD-Gammon architecture provides a starting point for such an approach. This architecture updates the parameters of a network that estimates the value function, directly from on-policy samples of experience, $s_t, a_t, r_t, s_{t+1}, a_{t+1}$, drawn from the algorithm's interactions with the environment (or by self-play, in the case of backgammon). Since this approach was able to outperform the best human backgammon players 20 years ago, it is natural to wonder whether two decades of hardware improvements, coupled with modern deep neural network architectures and scalable RL algorithms might produce significant progress. 
+
+%However, the TD-gammon approach does not maximize the amount of data that can be fed into the learning algorithm, since every learning update requires an expensive interaction with the emulator. Instead, 
+In contrast to TD-Gammon and similar online approaches, we utilize a technique known as \emph{experience replay}~\cite{lin1993reinforcement} where we store the agent's experiences at each time-step, $e_t = (s_t, a_t, r_t, s_{t+1})$ in a data-set $\mathcal{D} = e_1, ..., e_N$, pooled over many episodes into a \emph{replay memory}. During the inner loop of the algorithm, we apply Q-learning updates, or minibatch updates, to samples of experience, $e \sim \mathcal{D}$, drawn at random from the pool of stored samples. After performing experience replay, the agent selects and executes an action according to an $\epsilon$-greedy policy. Since using histories of arbitrary length as inputs to a neural network can be difficult, our Q-function instead works on fixed length representation of histories produced by a function $\phi$. The full algorithm, which we call \emph{deep Q-learning}, is presented in Algorithm~\ref{alg}.
+
+This approach has several advantages over standard online Q-learning~\cite{sutton:book}. First, each step of experience is potentially used in many weight updates, which allows for greater data efficiency. Second, learning directly from consecutive samples is inefficient, due to the strong correlations between the samples; randomizing the samples breaks these correlations and therefore reduces the variance of the updates. Third, when learning on-policy the current parameters determine the next data sample that the parameters are trained on. For example, if the maximizing action is to move left then the training samples will be dominated by samples from the left-hand side; if the maximizing action then switches to the right then the training distribution will also switch. It is easy to see how unwanted feedback loops may arise and the parameters could get stuck in a poor local minimum, or even diverge catastrophically \cite{tsitsiklis:td-convergence}. By using experience replay the behavior distribution is averaged over many of its previous states, smoothing out learning and avoiding oscillations or divergence in the parameters. Note that when learning by experience replay, it is necessary to learn off-policy (because our current parameters are different to those used to generate the sample), which motivates the choice of Q-learning.
+
+In practice, our algorithm only stores the last $N$ experience tuples in the replay memory, and samples uniformly at random from $\mathcal{D}$ when performing updates. This approach is in some respects limited since the memory buffer does not differentiate important transitions and always overwrites with recent transitions due to the finite memory size $N$. Similarly, the uniform sampling gives equal importance to all transitions in the replay memory. A more sophisticated sampling strategy might emphasize transitions from which we can learn the most, similar to prioritized sweeping \cite{moore:prioritized}.  % 
+
+%Although the framework we presented in Section~\ref{sec:background} uses complete sequences as the state representation, this is challenging in practice, typically requiring a recurrent neural network architecture that can backpropagate errors over thousands of time-steps, instead we truncate the sequence to a small number of the most recent frames.
+
+\begin{algorithm}[t]
+\begin{algorithmic}
+\State Initialize replay memory $\mathcal{D}$ to capacity $N$
+\State Initialize action-value function $Q$ with random weights
+%\State Require preprocessor $h(s)$ that maps histories to fixed-length representations.
+\For{episode $=1,M$} 
+\State Initialise sequence $s_1 = \{x_1\}$ and preprocessed sequenced $\phi_1 = \phi(s_1)$
+\For {$t=1,T$}
+	\State With probability $\epsilon$ select a random action $a_t$
+	\State otherwise select $a_t = \max_{a} Q^*(\phi(s_t), a; \theta)$
+	\State Execute action $a_t$ in emulator and observe reward $r_t$ and image $x_{t+1}$
+	\State Set $s_{t+1} = s_t,a_t,x_{t+1}$ and preprocess $\phi_{t+1} = \phi(s_{t+1})$
+	\State Store transition $\left(\phi_t,a_t,r_t,\phi_{t+1}\right)$ in $\mathcal{D}$
+	%\For {$k=1$ to $K$}
+	\State Sample random minibatch of transitions $\left(\phi_j,a_j,r_j,\phi_{j+1}\right)$ from $\mathcal{D}$
+	\State Set
+	$y_j =
+    \left\{
+    \begin{array}{l l}
+      r_j  \quad & \text{for terminal } \phi_{j+1}\\
+      r_j + \gamma \max_{a'} Q(\phi_{j+1}, a'; \theta) \quad & \text{for non-terminal } \phi_{j+1}
+    \end{array} \right.$
+	\State Perform a gradient descent step on $\left(y_j - Q(\phi_j, a_j; \theta) \right)^2$ according to equation~\ref{eq:q-learning-gradient}
+	%\EndFor
+\EndFor
+\EndFor
+\end{algorithmic}
+\caption{Deep Q-learning with Experience Replay}
+\label{alg}
+\end{algorithm}
+
+%We also modify the inner loop of Algorithm~\ref{alg} to sample a minibatch of transitions and perform a single minibatch gradient descent update on the given objective.  Although we typically use minibatch gradient descent updates in the last step of the training loop, we also experimented with the RMSProp~\cite{tieleman-rmsprop} algorithm, which adaptively determines a learning rate for each weight, and found that it led to faster training on some problems.  We also use a simple frame-skipping technique from~\cite{bellemare-ale}.  More precisely, the agent sees and selects actions on every $k$th frame instead of every frame, and its last action is repeated on skipped frames.  Since running the emulator forward for one step requires much less computation than having the agent select an action, this technique allows the agent to play roughly $k$ times more games without significantly increasing the runtime.  We use $k=4$ for all games except Space Invaders where using $k=4$ makes lasers invisible because of the period at which they blink.  We used $k=3$ to avoid this problem and this change was the only difference in hyper parameter values between any of the games. 
+
+% Initialize TransitionTable
+% for t=1,T
+%     Observse s_t 
+%     a_t = \arg\max_a \aqpi(\ssq, a)
+% end
+
+%We opted for an online variant of Q-learning as the training method for our models for a number of reasons.
+%First, training a convolutional neural network is computationally expensive and online optimization algorithms
+%such as stochastic gradient descent and its adaptive variants are able to train these models faster than 
+%batch optimization algorithms.  More importantly, reinforcement learning is inherently online because
+%an agent learns by interacting with the environment and continually using its own experience to improve its policy.
+%While iterative batch learning methods which periodically retrain the policy from scratch based on past experience exist, applying such
+%techniques to convolutional neural networks would be prohibitively expensive.
+
+%Combining 
+%Trying to improve a policy $\pi$ based on experience generated by following $\pi$ itself is
+%a challenging problem.  The main difficulty is caused by the fact that changes to $\pi$
+%affect the future distribution of states which will in turn be used to update $\pi$.  This process
+%can result in a feedback loop, causing the policy to get stuck in one part of the state space.
+
+
+
+\subsection{Preprocessing and Model Architecture}
+
+Working directly with raw Atari frames, which are $210\times 160$ pixel images with a 128 color palette, can be computationally demanding, so we apply a basic preprocessing step aimed at reducing the input dimensionality.  The raw frames are preprocessed by first converting their RGB representation to gray-scale and down-sampling it to a $110 \times 84$ image. The final input representation is obtained by cropping an $84\times 84$ region of the image that roughly captures the playing area. The final cropping stage is only required because we use the GPU implementation of 2D convolutions from~\cite{krizhevsky-imagenet}, which expects square inputs.  For the experiments in this paper, the function $\phi$ from algorithm~\ref{alg} applies this preprocessing to the last $4$ frames of a history and stacks them to produce the input to the $Q$-function. 
+
+There are several possible ways of parameterizing $Q$ using a neural network.  Since $Q$ maps history-action pairs to scalar estimates of their Q-value, the history and the action have been used as inputs to the neural network by some previous approaches~\cite{riedmiller-nfq,lange:dfq}.  The main drawback of this type of architecture is that a separate forward pass is required to compute the Q-value of each action, resulting in a cost that scales linearly with the number of actions.  We instead use an architecture in which there is a separate output unit for each possible action, and only the state representation is an input to the neural network.  The outputs correspond to the predicted Q-values of the individual action for the input state.  The main advantage of this type of architecture is the ability to compute Q-values for all possible actions in a given state with only a single forward pass through the network. 
+
+%The exact architecture we trained on all five Atari games is shown in Figure \note{we need a figure for the architecture}.
+We now describe the exact architecture used for all seven Atari games.
+The input to the neural network consists is an $84 \times 84 \times 4$ image produced by $\phi$.  The first hidden layer convolves $16$ $8 \times 8$ filters with stride $4$ with the input image and applies a rectifier nonlinearity~\cite{jarrett-best,nair-relu}.  The second hidden layer convolves $32$ $4\times 4$ filters with stride $2$, again followed by a rectifier nonlinearity.  The final hidden layer is fully-connected and consists of $256$ rectifier units.  The output layer is a fully-connected linear layer with a single output for each valid action.  The number of valid actions varied between $4$ and $18$ on the games we considered.  We refer to convolutional networks trained with our approach as Deep Q-Networks (DQN).
