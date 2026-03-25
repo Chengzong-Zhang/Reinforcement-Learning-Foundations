@@ -108,6 +108,58 @@ print("x[x>0] shape:", x[mask].shape)  # 取所有正数，结果是 1D 张量
 rows = torch.tensor([0, 2])            # 选第 0 和第 2 行
 print("x[[0,2]] shape:", x[rows].shape)  # shape=(2,6)
 
+# ── 1.6b torch.gather：沿某维度按索引逐行/逐列取值 ──────────────────────────
+# 问题背景：花式索引只能"整行/整列"选取。
+# 但在 RL 中，我们的网络输出 Q(s, a_0), Q(s, a_1), ..., Q(s, a_n)（所有动作的Q值），
+# 而我们只需要取出"当时执行的那个动作"对应的 Q 值，即逐行按不同列索引取一个元素。
+# torch.gather 正是为这个场景设计的。
+#
+# 语法：torch.gather(input, dim, index)
+#   input : 源张量，shape=(B, N)
+#   dim   : 沿哪个维度取值（dim=1 表示沿列方向，即在每行内部选列）
+#   index : 索引张量，shape 必须与输出 shape 完全一致
+#           index[i][j] 表示：在 input 的第 i 行，取第 index[i][j] 列的元素
+#   输出  : 与 index 同 shape
+#
+# 直觉理解：
+#   output[i][j] = input[i][ index[i][j] ]   （dim=1 时）
+#   output[i][j] = input[ index[i][j] ][j]   （dim=0 时）
+
+print("\n--- torch.gather ---")
+
+# 构造一个 Q 值矩阵：batch_size=4，num_actions=6
+# q_values[i] 是第 i 个样本在所有动作上的 Q 值
+q_values = torch.tensor([
+    [0.1, 0.5, 0.3, 0.9, 0.2, 0.7],   # 样本 0：各动作 Q 值
+    [0.4, 0.2, 0.8, 0.1, 0.6, 0.3],   # 样本 1
+    [0.7, 0.1, 0.4, 0.5, 0.3, 0.9],   # 样本 2
+    [0.2, 0.8, 0.6, 0.3, 0.9, 0.1],   # 样本 3
+])  # shape=(4, 6)
+
+# 每个样本实际执行的动作（从 replay buffer 取出）
+actions = torch.tensor([3, 2, 5, 4])  # shape=(4,)，动作 id
+
+# 目标：取出 q_values[0][3], q_values[1][2], q_values[2][5], q_values[3][4]
+# 即 Q(s_0, a=3), Q(s_1, a=2), Q(s_2, a=5), Q(s_3, a=4)
+
+# 第一步：index 必须与输出 shape 一致，这里输出是 (4,1)，所以 index 也要是 (4,1)
+# actions 原本是 (4,)，需要 unsqueeze(1) 变成 (4,1)
+index = actions.unsqueeze(1)           # (4,) → (4,1)
+print("index shape:", index.shape)     # torch.Size([4, 1])
+
+# 第二步：调用 gather，dim=1 表示在列方向索引（每行挑一个列元素）
+q_selected = torch.gather(q_values, dim=1, index=index)  # shape=(4,1)
+print("q_selected:\n", q_selected)
+# 验证：q_values[0][3]=0.9, [1][2]=0.8, [2][5]=0.9, [3][4]=0.9
+
+# 通常会 squeeze 掉多余的维度，得到 (B,) 形状
+q_selected = q_selected.squeeze(1)    # (4,1) → (4,)
+print("q_selected (squeezed):", q_selected)  # tensor([0.9, 0.8, 0.9, 0.9])
+
+# 对比：不用 gather 的等价写法（仅适合 1D 情况，不推荐在批量训练中使用）
+q_manual = q_values[torch.arange(4), actions]  # 花式索引：每行取对应列
+print("等价花式索引结果:      ", q_manual)     # 两者结果相同
+
 # ── 1.7 形状变换（Reshape & View）───────────────────────────────────────────
 
 print("\n--- Reshape ---")
