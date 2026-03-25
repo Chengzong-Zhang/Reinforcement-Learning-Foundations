@@ -10,6 +10,7 @@ from utils.utils import atari_state_preprocess_function
 
 
 def to_correct_device_tensor(input, device, dtype=torch.float32)-> torch.Tensor:
+    # Converts input (numpy array or torch tensor) to a tensor on the target device
     if isinstance(input, np.ndarray):
         return torch.tensor(input,dtype=dtype,device=device)
     elif isinstance(input, torch.Tensor):
@@ -32,7 +33,7 @@ class AgentBase(nn.Module, ABC):
         """Choose the action according to the states agent observed. """
         pass 
     
-    def _get_other_parameters(self):
+    def _get_other_parameters(self):  # prefix _ means: internal use only, not meant to be called from outside the class
         return dict(
             observation_space = self.observation_space,
             action_space = self.action_space,
@@ -52,24 +53,42 @@ class AgentBase(nn.Module, ABC):
         self.load_state_dict(pth_file['state_dict'])
         # TODO: check when other parameters are added to Agent
         data = pth_file['data']
-        self.observation_space = data['observation_space']
-        self.action_space = data['action_space']
-        self.device = data['device']
+        # self.observation_space = data['observation_space']
+        # self.action_space = data['action_space']
+        # self.device = data['device']
+        for key, value in data.items():
+            setattr(self, key, value)  # setattr(obj, name, value) ≡ obj.name = value, but name is a runtime string
         
 
 
 class AtariDQNAgent(AgentBase):
-    def __init__(self, observation_space: Space, action_space: Space, device):
+    def __init__(self, observation_space: Space, action_space: Space, device, alpha=1.0):
         super(AtariDQNAgent, self).__init__(observation_space, action_space, device)
         self.num_actions = action_space.n 
         self.observation_shape = observation_space.shape
         self.network = AtariDQNNetwork(observation_space.shape, action_space.n)
-
+        self.alpha = alpha
+        # CNN that maps (B,4,84,84) → (B, num_actions) Q-values
     
 
     def select_action(self, state:np.ndarray, deterministic=False) -> np.ndarray:
-       
         # TODO: select actions 
+        state_t = to_correct_device_tensor(state, self.device)  # convert state to tensor on device
+        with torch.no_grad():  # no gradient needed during action selection
+            q_values = self.network(state_t.unsqueeze(0)).squeeze(0)  # (num_actions,)
+
+        if deterministic:
+            # Greedy: pick the action with the highest Q-value
+            action = q_values.argmax().item()
+        else:
+            # Softmax exploration: scale Q-values by temperature alpha, then sample
+            scaled = q_values / self.alpha                            # divide by temperature α
+            probs = torch.softmax(scaled, dim=0)                 # compute π_softmax(a|s)
+            probs_np = probs.cpu().numpy()                       # move to CPU for numpy sampling
+            action = np.random.choice(self.num_actions, p=probs_np)  # sample action from distribution
+
+        return action
+    
 
     def get_q(self, states:np.ndarray, actions:Union[np.ndarray, torch.Tensor]):
         """
@@ -77,9 +96,22 @@ class AtariDQNAgent(AgentBase):
         output: action: (batch, 1)
         """
         # TODO: compute Q(s,a)
+        # The network already computes Q(s, a) for all actions at once.
+        # What we need to do is get the full Q-value matrix and index out the value for each executed action.
+        states_t   = to_correct_device_tensor(states, self.device)                    # turn to right device
+        actions_t  = to_correct_device_tensor(actions,self.device, dtype=torch.int64) # gather requires int64
+        q_values   = self.network(states_t)                                           # (B, num_actions)
+        index      = actions_t.unsqueeze(1)                                           # (B,) → (B, 1)
+        q_selected = torch.gather(q_values, dim=1, index=index)                      # (B, 1)
+        return q_selected.squeeze(1)                                                  # (B, 1) → (B,)
 
     def get_max_q(self, states:np.ndarray):
-        # TODO: compute max_a Q(s,a) 
+        # TODO: compute max_a Q(s,a)
+        states_t   = to_correct_device_tensor(states, self.device)                    # turn to right device
+        with torch.no_grad():                                                          # no gradient needed for target Q
+            q_values   = self.network(states_t)                                       # (B, num_actions)
+        max_q      = q_values.max(dim=1).values                                       # (B,)
+        return max_q
         
         
 
