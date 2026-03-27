@@ -9,8 +9,8 @@ import torch                          # PyTorch 深度学习框架
 import torch.nn.functional as F       # PyTorch 中的函数式接口，包含 relu、mse_loss 等
 import matplotlib.pyplot as plt       # 绘图库，用于可视化训练曲线
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))  # 将上级目录加入模块搜索路径，使得可以导入兄弟目录的模块
-import DQN.rl_utils as rl_utils       # 导入自定义工具函数（如 moving_average 滑动平均）
+sys.path.insert(0, os.path.dirname(__file__))  # 将脚本所在目录加入搜索路径，确保能找到同目录下的 rl_utils
+import rl_utils                        # 导入自定义工具函数（如 moving_average 滑动平均）
 
 class ReplayBuffer:
     ''' 经验回放池 '''
@@ -85,7 +85,7 @@ class DQN:
         # Bellman 目标：r + γ * max_a' Q_target(s', a') * (1 - done)
         # (1 - dones) 保证终止状态后无后续 Q 值（done=1 时该项为0）
         q_targets = rewards + self.gamma * max_next_q_values * (1 - dones)
-        dqn_loss = torch.mean(F.mse_loss(q_values, q_targets))  # 计算在线Q值与TD目标之间的均方误差损失（即 Bellman 误差）
+        dqn_loss = F.mse_loss(q_values, q_targets)  # 计算在线Q值与TD目标之间的均方误差损失（即 Bellman 误差）
         self.optimizer.zero_grad()   # 清空上一步积累的梯度（PyTorch 默认梯度累加，每次反传前必须清零）
         dqn_loss.backward()          # 对损失函数做反向传播，计算在线Q网络各参数的梯度
         self.optimizer.step()        # Adam 优化器根据梯度更新在线Q网络的参数（更新本质是改进后的随机梯度下降）

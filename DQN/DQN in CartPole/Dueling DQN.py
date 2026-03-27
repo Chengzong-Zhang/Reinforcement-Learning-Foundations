@@ -30,8 +30,9 @@ class VAnet(torch.nn.Module):
         self.fc_V = torch.nn.Linear(hidden_dim, 1)              # 价值流（Value stream）：输出当前状态的整体价值 V(s)，与具体动作无关
 
     def forward(self, x):
-        A = self.fc_A(F.relu(self.fc1(x)))          # 共享层经 ReLU 激活后，送入优势流，得到各动作的优势值 A(s,a)
-        V = self.fc_V(F.relu(self.fc1(x)))          # 共享层经 ReLU 激活后，送入价值流，得到状态价值 V(s)，shape=(batch,1)
+        h = F.relu(self.fc1(x))                     # 共享层经 ReLU 激活，得到隐藏表示（只计算一次，A 流和 V 流共用）
+        A = self.fc_A(h)                            # 送入优势流，得到各动作的优势值 A(s,a)
+        V = self.fc_V(h)                            # 送入价值流，得到状态价值 V(s)，shape=(batch,1)
         Q = V + A - A.mean(1).view(-1, 1)           # Q(s,a) = V(s) + A(s,a) - mean_a[A(s,a)]；减去均值是为了保证可识别性（让 V 和 A 的分解唯一）
         return Q                                     # 返回各动作的 Q 值，shape=(batch, action_dim)
 
@@ -95,7 +96,7 @@ class DQN:
         else:  # 普通 DQN 或 Dueling DQN 的目标值计算方式
             max_next_q_values = self.target_q_net(next_states).max(1)[0].view(-1, 1)  # 目标网络直接选最大 Q 值（选择与评估都用目标网络）
         q_targets = rewards + self.gamma * max_next_q_values * (1 - dones)  # Bellman 目标：r + γ * Q_target * (1 - done)，done=1 时终止状态无后续价值
-        dqn_loss = torch.mean(F.mse_loss(q_values, q_targets))  # 计算在线Q值与TD目标之间的均方误差损失（即 Bellman 误差）
+        dqn_loss = F.mse_loss(q_values, q_targets)  # 计算在线Q值与TD目标之间的均方误差损失（即 Bellman 误差）
         self.optimizer.zero_grad()   # 清空上一步积累的梯度（PyTorch 默认梯度累加，每次反传前必须清零）
         dqn_loss.backward()          # 对损失函数做反向传播，计算在线Q网络各参数的梯度
         self.optimizer.step()        # Adam 优化器根据梯度更新在线Q网络的参数

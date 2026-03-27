@@ -78,7 +78,7 @@ class DQN:
         else:  # 普通 DQN 的目标值计算方式
             max_next_q_values = self.target_q_net(next_states).max(1)[0].view(-1, 1)      # 目标网络直接选最大 Q 值（选择与评估都用目标网络，容易高估动作价值）
         q_targets = rewards + self.gamma * max_next_q_values * (1 - dones)  # Bellman 目标：r + γ * Q_target * (1 - done)，done=1 时终止状态无后续价值
-        dqn_loss = torch.mean(F.mse_loss(q_values, q_targets))  # 计算在线Q值与TD目标之间的均方误差损失（即 Bellman 误差）
+        dqn_loss = F.mse_loss(q_values, q_targets)  # 计算在线Q值与TD目标之间的均方误差损失（即 Bellman 误差）
         self.optimizer.zero_grad()   # 清空上一步积累的梯度（PyTorch 默认梯度累加，每次反传前必须清零）
         dqn_loss.backward()          # 对损失函数做反向传播，计算在线Q网络各参数的梯度
         self.optimizer.step()        # Adam 优化器根据梯度更新在线Q网络的参数
