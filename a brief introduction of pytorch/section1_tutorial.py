@@ -431,7 +431,63 @@ print("\nstate_dict keys:", list(sd.keys()))
 # 加载（实际使用时）
 # policy.load_state_dict(torch.load('policy.pt'))
 
-# ── 3.6 前向传播（调用网络） ─────────────────────────────────────────────────
+# ── 3.6 Target Network 更新（Hard Update & Soft Update）─────────────────────
+# DQN 中有两个网络：当前网络（online）和目标网络（target）
+# 目标网络用来计算稳定的 TD 目标值，避免"追着自己的尾巴跑"导致训练震荡
+# 两种更新方式：Hard Update（直接复制）和 Soft Update（缓慢混合）
+
+# 准备两个结构相同的网络来演示
+online_net = PolicyNet(obs_dim=8, act_dim=4)   # 当前网络（被 optimizer 更新）
+target_net = PolicyNet(obs_dim=8, act_dim=4)   # 目标网络（不被 optimizer 直接更新）
+
+# --- Hard Update ---
+# 每隔固定步数，把 online_net 的参数完整复制给 target_net
+# 相当于：θ_target ← θ_online
+# 用到的函数：
+#   .state_dict()       → 返回模型所有参数和 buffer 的字典（快照）
+#   .load_state_dict()  → 把字典里的参数加载进模型（覆盖当前参数）
+
+def hard_update(online: nn.Module, target: nn.Module):
+    target.load_state_dict(online.state_dict())  # 直接完整覆盖
+
+hard_update(online_net, target_net)
+print("\n--- Hard Update ---")
+print("online fc1.weight[0,:3]:", online_net.fc1.weight[0, :3].detach())
+print("target fc1.weight[0,:3]:", target_net.fc1.weight[0, :3].detach())
+# 两者现在完全相同
+
+# --- Soft Update ---
+# 每步用小比例 τ 把 online_net 参数混入 target_net
+# 公式：θ_target ← τ·θ_online + (1-τ)·θ_target
+# 用到的函数：
+#   .named_parameters() → 同时返回参数名和参数张量的迭代器
+#   .param.data         → 直接访问参数的底层数据（跳过 autograd，可就地修改）
+#   注意：必须用 .data 操作，否则 in-place 修改会破坏计算图
+
+def soft_update(online: nn.Module, target: nn.Module, tau: float = 0.005):
+    for (_, online_param), (_, target_param) in zip(
+        online.named_parameters(), target.named_parameters()
+    ):
+        # θ_target ← τ·θ_online + (1-τ)·θ_target
+        target_param.data.copy_(
+            tau * online_param.data + (1 - tau) * target_param.data
+        )
+
+# 先把 target_net 的参数改成全零，方便观察混合效果
+for p in target_net.parameters():
+    p.data.fill_(0.0)
+
+print("\n--- Soft Update (tau=0.1, before) ---")
+print("online fc1.weight[0,:3]:", online_net.fc1.weight[0, :3].detach())
+print("target fc1.weight[0,:3]:", target_net.fc1.weight[0, :3].detach())  # 全零
+
+soft_update(online_net, target_net, tau=0.1)
+
+print("--- Soft Update (tau=0.1, after) ---")
+print("target fc1.weight[0,:3]:", target_net.fc1.weight[0, :3].detach())
+# target 参数 ≈ 0.1 * online + 0.9 * 0 = 0.1 * online
+
+# ── 3.7（原 3.6）前向传播（调用网络） ────────────────────────────────────────
 # 调用 net(x) 等价于调用 net.forward(x)，但前者会触发钩子（hooks）
 batch_obs = torch.randn(16, 8)           # 16 个样本，每个观测维度为 8
 logits = policy(batch_obs)               # shape=(16,4)
