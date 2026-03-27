@@ -72,7 +72,7 @@ class OffPolicyAlgorithm(ABC):
         do gradient update to the policy with a batch of data sampled from replay buffer
         """
 
-    def random_choose_action():
+    def random_choose_action(self):
         """You can use this function to implement epsilon-greedy exploration strategy"""
         return False
 

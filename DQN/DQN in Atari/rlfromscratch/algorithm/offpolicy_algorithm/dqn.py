@@ -56,10 +56,12 @@ class DQN(OffPolicyAlgorithm):
     
     def _target_hard_update(self):
         # TODO: hard update 
+        self.target_agent.load_state_dict(self.agent.state_dict())
     
     def _target_soft_update(self):
         # TODO: do soft update 
-
+        for target_param, param in zip(self.target_agent.parameters(), self.agent.parameters()):
+            target_param.data.copy_(self.tau * param.data + (1.0 - self.tau) * target_param.data)
 
     def _update_buffer(self, batch):
         self.buffer.add(batch)
@@ -67,7 +69,33 @@ class DQN(OffPolicyAlgorithm):
 
     def _update_policy(self):
         # TODO: compute DQN loss according to paper 
+        result = Result("policy")
+        batch = self.buffer.sample(self.batch_size)
 
+        q = self.agent.get_q(batch['states'],batch['actions'])
+
+        with torch.no_grad():
+            if self.use_target:
+                max_next_q = self.target_agent.get_max_q(batch['next_states'])
+            else:
+                max_next_q = self.agent.get_max_q(batch['next_states'])
+        rewards = torch.tensor(batch['rewards'], dtype=torch.float32, device=self.device)
+        dones   = torch.tensor(batch['dones'],   dtype=torch.float32, device=self.device)
+
+        td_target = rewards + self.gamma * max_next_q * (1.0 - dones)
+        td_error = td_target - q
+        loss = LOSS_DICT["huber"](q, td_target)
+
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+
+        if self.use_target:
+            if self.target_update_method == "hard":
+                if self.gradient_step % self.target_update_interval == 0:
+                    self._target_hard_update()
+            else:  # soft
+                self._target_soft_update()
 
         result.add_metric("network/loss", loss.item())
         result.add_metric("td_error", td_error.mean().item())
@@ -79,7 +107,12 @@ class DQN(OffPolicyAlgorithm):
 
     def random_choose_action(self):
         """You can use this function to implement epsilon-greedy exploration strategy"""
-        # TODO
+        # decay epsilon linearly from start_epsilon to end_epsilon over epsilon_timestep steps
+        self.epsilon = max(
+            self.end_epsilon,
+            self.start_epsilon - (self.start_epsilon - self.end_epsilon) * self.interaction_step / self.epsilon_timestep
+        )
+        return np.random.rand() < self.epsilon
 
     def interact_with_envs(self):
         batch, result = super().interact_with_envs()
