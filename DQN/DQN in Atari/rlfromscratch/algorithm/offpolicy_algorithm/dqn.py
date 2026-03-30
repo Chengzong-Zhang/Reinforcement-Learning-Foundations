@@ -84,7 +84,7 @@ class DQN(OffPolicyAlgorithm):
 
         td_target = rewards + self.gamma * max_next_q * (1.0 - dones)
         td_error = td_target - q
-        loss = LOSS_DICT["huber"](q, td_target)
+        loss = LOSS_DICT["mse"](q, td_target)
 
         self.optimizer.zero_grad()
         loss.backward()

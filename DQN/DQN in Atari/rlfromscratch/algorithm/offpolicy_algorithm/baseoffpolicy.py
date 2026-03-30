@@ -10,7 +10,7 @@ from memory.memory import ReplayBuffer
 from utils.evaluate import evaluate_atari
 from agent.atari_agent import AgentBase, AtariDQNAgent
 from utils.result import Result
-from utils.utils import atari_to_useful_action
+from utils.utils import atari_to_useful_action, atari_state_preprocess_function
 
 
 class OffPolicyAlgorithm(ABC):
@@ -89,6 +89,25 @@ class OffPolicyAlgorithm(ABC):
                 
                 # TODO interact with environment
 
+                current_obs = self.observations  # snapshot obs before step
+                if self.random_choose_action():  # epsilon-greedy: True → random
+                    actions = self.training_envs.action_space.sample()  # shape: (num_envs,)
+                else:
+                    actions = np.array([
+                        self.agent.select_action(
+                            atari_state_preprocess_function(self.training_envs.observation_space, self.observations[i]),
+                            deterministic=self.train_action_deterministic
+                        )
+                        for i in range(self.num_training_envs)
+                    ])  # shape: (num_envs,)
+                next_obs, rewards, dones, infos = self.training_envs.step(actions)  # SB3 VecEnv returns 4 values
+                batch['states'].append(current_obs)
+                batch['actions'].append(actions.reshape(self.num_training_envs, 1))  # buffer expects (num_envs, action_dim=1)
+                batch['rewards'].append(rewards)
+                batch['next_states'].append(next_obs)
+                batch['dones'].append(dones)
+                self.observations = next_obs
+                self.interaction_step += self.num_training_envs  # each step advances num_envs parallel steps
                 for i in range(self.num_training_envs):
                     info = infos[i]
                     if "episode" in info:
