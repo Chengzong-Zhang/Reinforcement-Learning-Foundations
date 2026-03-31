@@ -36,7 +36,7 @@ class DQN(OffPolicyAlgorithm):
         self.end_epsilon = algo_args.end_epsilon
         self.epsilon_timestep = algo_args.epsilon_timestep
         self.epsilon_schedular = algo_args.epsilon_schedular
-        self.use_target = algo_args.use_target 
+        self.use_target = algo_args.use_target
         self.batch_size = algo_args.batch_size
         self.device = device
         
@@ -68,7 +68,7 @@ class DQN(OffPolicyAlgorithm):
 
 
     def _update_policy(self):  # type: ignore[override]
-        # TODO: compute DQN loss according to paper 
+        # TODO: compute DQN loss according to paper
         result = Result("policy")
         batch = self.buffer.sample(self.batch_size)
 

@@ -19,7 +19,7 @@ algorithm:
   target_update_method: hard
   target_update_interval: 10000
   target_update_tau: 0.005
-  batch_size: 32
+  batch_size: 256
 
 
 seed: 0
@@ -42,6 +42,5 @@ hydra:
   run:
     dir: outputs/${experiment_name}//${now:%Y-%m-%d_%H-%M-%S}
   output_subdir: null
-  job_logging: disabled
 
 hydra_base_dir: ""
