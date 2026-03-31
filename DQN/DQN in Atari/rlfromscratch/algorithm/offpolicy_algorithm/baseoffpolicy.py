@@ -2,7 +2,9 @@ from tqdm import tqdm
 from abc import ABC, abstractmethod
 import numpy as np
 from collections import deque
+from typing import Any, Optional
 import gymnasium as gym
+from stable_baselines3.common.vec_env import VecEnv
 
 
 from logger.logger import Logger
@@ -18,10 +20,11 @@ class OffPolicyAlgorithm(ABC):
     """Base class for off-policy RL algorithms."""
 
 
-    def __init__(self, training_envs:gym.Env, testing_envs:gym.Env, buffer: ReplayBuffer, agent: AgentBase, logger: Logger, device,  save_pth: str, args):
+    def __init__(self, training_envs: VecEnv, testing_envs: Optional[VecEnv], buffer: ReplayBuffer, agent: AgentBase, logger: Logger, device,  save_pth: str, args):
         super(OffPolicyAlgorithm,self).__init__()
-        self.training_envs = training_envs
+        self.training_envs: VecEnv = training_envs
         self.testing_envs = testing_envs
+        self.observations: np.ndarray  # initialized in initialize()
         self.buffer = buffer
         self.agent = agent.to(device)
         self.device = device
@@ -83,7 +86,7 @@ class OffPolicyAlgorithm(ABC):
         interact with the environments and collect data, then return the collected batch of data
         """
         interact_steps_per_env = self.interact_per_epoch
-        batch = dict(states=[], actions=[], rewards=[], next_states=[], dones=[]) 
+        batch: dict[str, Any] = dict(states=[], actions=[], rewards=[], next_states=[], dones=[])
         with Result("interact") as result:
             for step in range(interact_steps_per_env):
                 
@@ -91,11 +94,12 @@ class OffPolicyAlgorithm(ABC):
 
                 current_obs = self.observations  # snapshot obs before step
                 if self.random_choose_action():  # epsilon-greedy: True → random
-                    actions = self.training_envs.action_space.sample()  # shape: (num_envs,)
+                    # action_space.sample() returns a scalar; wrap in array to match VecEnv's expected shape (num_envs,)
+                    actions = np.array([self.training_envs.action_space.sample() for _ in range(self.num_training_envs)])
                 else:
                     actions = np.array([
                         self.agent.select_action(
-                            atari_state_preprocess_function(self.training_envs.observation_space, self.observations[i]),
+                            self.observations[i],  # select_action handles preprocessing internally
                             deterministic=self.train_action_deterministic
                         )
                         for i in range(self.num_training_envs)
@@ -106,7 +110,7 @@ class OffPolicyAlgorithm(ABC):
                 batch['rewards'].append(rewards)
                 batch['next_states'].append(next_obs)
                 batch['dones'].append(dones)
-                self.observations = next_obs
+                self.observations = next_obs  # type: ignore[assignment]
                 self.interaction_step += self.num_training_envs  # each step advances num_envs parallel steps
                 for i in range(self.num_training_envs):
                     info = infos[i]
@@ -138,7 +142,7 @@ class OffPolicyAlgorithm(ABC):
         return False
 
     def initialize(self):
-        self.observations = self.training_envs.reset()
+        self.observations = self.training_envs.reset()  # type: ignore[assignment]
     
     def train_log_condition(self):
         if self.interaction_step%self.train_log_interval==0:
