@@ -41,5 +41,7 @@ log_dir: outputs/${experiment_name}//${now:%Y-%m-%d_%H-%M-%S}
 hydra:
   run:
     dir: outputs/${experiment_name}//${now:%Y-%m-%d_%H-%M-%S}
+  output_subdir: null
+  job_logging: disabled
 
 hydra_base_dir: ""
