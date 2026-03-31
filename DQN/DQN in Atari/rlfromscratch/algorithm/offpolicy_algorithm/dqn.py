@@ -79,8 +79,8 @@ class DQN(OffPolicyAlgorithm):
                 max_next_q = self.target_agent.get_max_q(batch['next_states'])
             else:
                 max_next_q = self.agent.get_max_q(batch['next_states'])  # type: ignore[attr-defined]
-        rewards = torch.tensor(batch['rewards'], dtype=torch.float32, device=self.device)
-        dones   = torch.tensor(batch['dones'],   dtype=torch.float32, device=self.device)
+        rewards = torch.from_numpy(batch['rewards']).to(device=self.device)
+        dones   = torch.from_numpy(batch['dones']).to(device=self.device)
 
         td_target = rewards + self.gamma * max_next_q * (1.0 - dones)
         td_error = td_target - q

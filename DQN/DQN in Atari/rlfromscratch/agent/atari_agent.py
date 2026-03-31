@@ -12,10 +12,11 @@ from utils.utils import atari_state_preprocess_function
 def to_correct_device_tensor(input, device, dtype=torch.float32)-> torch.Tensor:
     # Converts input (numpy array or torch tensor) to a tensor on the target device
     if isinstance(input, np.ndarray):
-        return torch.tensor(input,dtype=dtype,device=device)
+        # from_numpy shares CPU memory (no copy); .to() fuses dtype conversion + GPU transfer in one pass
+        # This avoids the intermediate CPU float32 copy that torch.tensor() always makes
+        return torch.from_numpy(np.ascontiguousarray(input)).to(dtype=dtype, device=device)
     elif isinstance(input, torch.Tensor):
-        input = input.to(device)
-        return input
+        return input.to(dtype=dtype, device=device)
     else:
         raise TypeError("input must be np array or torch tensor")
 
@@ -73,8 +74,9 @@ class AtariDQNAgent(AgentBase):
 
     def select_action(self, states:np.ndarray, deterministic=False) -> np.ndarray:
         # TODO: select actions
-        processed = atari_state_preprocess_function(self.observation_space, states)  # normalize uint8 [0,255] → float32 [0,1]
-        state_t = to_correct_device_tensor(processed, self.device)  # convert state to tensor on device
+        state_t = to_correct_device_tensor(states, self.device)  # uint8 → GPU (one fused transfer)
+        if isinstance(states, np.ndarray) and states.dtype == np.uint8:
+            state_t = state_t / 255.0  # normalize on GPU: 4× less PCIe data vs CPU float32
 
         single = state_t.ndim == 3  # (C, H, W) → single state; (B, C, H, W) → batched
         if single:
@@ -105,8 +107,9 @@ class AtariDQNAgent(AgentBase):
         # TODO: compute Q(s,a)
         # The network already computes Q(s, a) for all actions at once.
         # What we need to do is get the full Q-value matrix and index out the value for each executed action.
-        processed  = atari_state_preprocess_function(self.observation_space, states)  # normalize uint8 [0,255] → float32 [0,1]
-        states_t   = to_correct_device_tensor(processed, self.device)                 # turn to right device
+        states_t   = to_correct_device_tensor(states, self.device)                    # uint8 → GPU (one fused transfer)
+        if isinstance(states, np.ndarray) and states.dtype == np.uint8:
+            states_t = states_t / 255.0                                               # normalize on GPU
         actions_t  = to_correct_device_tensor(actions,self.device, dtype=torch.int64) # gather requires int64
         q_values   = self.network(states_t)                                           # (B, num_actions)
         index      = actions_t.reshape(-1, 1)                                          # (B,) or (B,1) → always (B, 1)
@@ -115,8 +118,9 @@ class AtariDQNAgent(AgentBase):
 
     def get_max_q(self, states:np.ndarray):
         # TODO: compute max_a Q(s,a)
-        processed  = atari_state_preprocess_function(self.observation_space, states)  # normalize uint8 [0,255] → float32 [0,1]
-        states_t   = to_correct_device_tensor(processed, self.device)                 # turn to right device
+        states_t   = to_correct_device_tensor(states, self.device)                    # uint8 → GPU (one fused transfer)
+        if isinstance(states, np.ndarray) and states.dtype == np.uint8:
+            states_t = states_t / 255.0                                               # normalize on GPU
         with torch.no_grad():                                                          # no gradient needed for target Q
             q_values   = self.network(states_t)                                       # (B, num_actions)
         max_q      = q_values.max(dim=1).values                                       # (B,)

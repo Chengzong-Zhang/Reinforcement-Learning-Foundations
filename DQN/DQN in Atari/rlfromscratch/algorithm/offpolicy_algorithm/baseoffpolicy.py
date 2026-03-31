@@ -97,13 +97,10 @@ class OffPolicyAlgorithm(ABC):
                     # action_space.sample() returns a scalar; wrap in array to match VecEnv's expected shape (num_envs,)
                     actions = np.array([self.training_envs.action_space.sample() for _ in range(self.num_training_envs)])
                 else:
-                    actions = np.array([
-                        self.agent.select_action(
-                            self.observations[i],  # select_action handles preprocessing internally
-                            deterministic=self.train_action_deterministic
-                        )
-                        for i in range(self.num_training_envs)
-                    ])  # shape: (num_envs,)
+                    actions = self.agent.select_action(
+                        self.observations,  # pass full batch: one GPU forward pass for all envs
+                        deterministic=self.train_action_deterministic
+                    )  # shape: (num_envs,)
                 next_obs, rewards, dones, infos = self.training_envs.step(actions)  # SB3 VecEnv returns 4 values
                 batch['states'].append(current_obs)
                 batch['actions'].append(actions.reshape(self.num_training_envs, 1))  # buffer expects (num_envs, action_dim=1)

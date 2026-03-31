@@ -7,7 +7,7 @@ env:
 algorithm:
   name: DQN
   buffer_name: ReplayBuffer
-  buffer_size: 1000000
+  buffer_size: 250000
   learning_rate: 1e-4
   gamma: 0.99
   optimizer: Adam
