@@ -39,10 +39,10 @@ class ReplayBuffer:
 
         self.observation_space = observation_space 
         self.action_space = action_space
-        self.states = np.zeros((buffer_size, self.num_envs, *observation_space.shape), dtype=observation_space.dtype) #TODO : check the type of observation space, if it's not gym.spaces.Box, it may raise an error.
-        self.actions = np.zeros((buffer_size, self.num_envs, self.action_dim), dtype=action_space.dtype)
-        
-        self.rewards = np.zeros((buffer_size, self.num_envs), dtype=np.float32)
+        self.states = np.zeros((self.buffer_size, self.num_envs, *observation_space.shape), dtype=observation_space.dtype) #TODO : check the type of observation space, if it's not gym.spaces.Box, it may raise an error.
+        self.actions = np.zeros((self.buffer_size, self.num_envs, self.action_dim), dtype=action_space.dtype)
+
+        self.rewards = np.zeros((self.buffer_size, self.num_envs), dtype=np.float32)
         self.dones = np.zeros((self.buffer_size, self.num_envs), dtype=np.float32)
         # TODO: try to understand why there is no next_states buffer
         # since the replay buffer is a circular buffer, (pos+1)%self.buffer_size is the next_state, so we don't need to store next_state separately.
