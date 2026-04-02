@@ -124,7 +124,7 @@ class ReplayBuffer:
         You may change this method to use prioritized experience replay or other sampling strategies."""
         # TODO: Try to implement n-step sample
         if self.full:
-            batch_indices = (np.random.randint(n_step, self.buffer_size, size=batch_size) + self.pos) % self.buffer_size
+            batch_indices = (np.random.randint(1, self.buffer_size - n_step + 1, size=batch_size) + self.pos) % self.buffer_size
         else:
             batch_indices = np.random.randint(0, self.pos - n_step + 1, size=batch_size)
 
