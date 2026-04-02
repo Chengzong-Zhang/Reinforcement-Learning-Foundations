@@ -20,6 +20,7 @@ algorithm:
   target_update_interval: 10000
   target_update_tau: 0.005
   batch_size: 256
+  n_step: 2 
 
 
 seed: 0

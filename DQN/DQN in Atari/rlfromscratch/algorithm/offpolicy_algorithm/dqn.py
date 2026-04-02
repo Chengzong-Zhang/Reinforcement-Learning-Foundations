@@ -39,6 +39,8 @@ class DQN(OffPolicyAlgorithm):
         self.use_target = algo_args.use_target
         self.batch_size = algo_args.batch_size
         self.device = device
+
+        self.n_step = algo_args.n_step
         
         if self.use_target:
             self.target_agent = target_agent.to(self.device)  # type: ignore[union-attr]
@@ -70,7 +72,7 @@ class DQN(OffPolicyAlgorithm):
     def _update_policy(self):  # type: ignore[override]
         # TODO: compute DQN loss according to paper
         result = Result("policy")
-        batch = self.buffer.sample(self.batch_size)
+        batch = self.buffer.sample(self.batch_size, n_step=self.n_step, gamma=self.gamma)  # type: ignore[attr-defined]
 
         q = self.agent.get_q(batch['states'],batch['actions'])  # type: ignore[attr-defined]
 
@@ -82,7 +84,7 @@ class DQN(OffPolicyAlgorithm):
         rewards = torch.from_numpy(batch['rewards']).to(device=self.device)
         dones   = torch.from_numpy(batch['dones']).to(device=self.device)
 
-        td_target = rewards + self.gamma * max_next_q * (1.0 - dones)
+        td_target = rewards + self.gamma ** self.n_step * max_next_q * (1.0 - dones)
         td_error = td_target - q
         loss = LOSS_DICT["mse"](q, td_target)
 

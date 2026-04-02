@@ -94,33 +94,44 @@ class ReplayBuffer:
         
         self.states[self.pos] = ns[-1] # set the next state of the last transition in the batch to the current position, so that we can get the next state when sampling.
     
-    def _sample_from_indices(self, batch_indices: np.ndarray) -> dict[str, np.ndarray]:
+    def _sample_from_indices(self, batch_indices: np.ndarray, n_step: int = 1, gamma: float = 0.99) -> dict[str, np.ndarray]:
         """Sample a batch of transitions from the replay buffer.
         """
         # TODO: Try to implement n-step sample
         env_indices = np.random.randint(0, high=self.num_envs, size=(len(batch_indices),))
-        
+
+        n_step_rewards = np.zeros(len(batch_indices), dtype=np.float32)
+        still_alive = np.ones(len(batch_indices), dtype=bool)
+        discount = 1.0
+        for k in range(n_step):
+            idx_k = (batch_indices + k) % self.buffer_size
+            n_step_rewards += discount * self.rewards[idx_k, env_indices] * still_alive
+            done_at_k = self.dones[idx_k, env_indices].astype(bool)
+            still_alive &= ~done_at_k
+            discount *= gamma
+        n_step_dones = (~still_alive).astype(np.float32)
+
         return dict(
             states=self.states[batch_indices, env_indices, :],
             actions=self.actions[batch_indices, env_indices, :],
-            next_states=self.states[(batch_indices + 1) % self.buffer_size, env_indices, :], # get the next state by adding 1 to the index, and taking modulo buffer size to handle the circular buffer.
-            rewards=self.rewards[batch_indices, env_indices],
-            dones=self.dones[batch_indices, env_indices],
+            next_states=self.states[(batch_indices + n_step) % self.buffer_size, env_indices, :], # get the next state by adding n_step to the index, and taking modulo buffer size to handle the circular buffer.
+            rewards=n_step_rewards,
+            dones=n_step_dones,
         )
 
-    def _get_indices(self, batch_size: int) -> np.ndarray:
+    def _get_indices(self, batch_size: int, n_step: int = 1) -> np.ndarray:
         """Get a batch of indices to sample from the replay buffer.
         You may change this method to use prioritized experience replay or other sampling strategies."""
         # TODO: Try to implement n-step sample
         if self.full:
-            batch_indices = (np.random.randint(1, self.buffer_size, size=batch_size) + self.pos) % self.buffer_size
+            batch_indices = (np.random.randint(n_step, self.buffer_size, size=batch_size) + self.pos) % self.buffer_size
         else:
-            batch_indices = np.random.randint(0, self.pos, size=batch_size)
-        
+            batch_indices = np.random.randint(0, self.pos - n_step + 1, size=batch_size)
+
         return batch_indices
 
-    def sample(self, batch_size: int) -> dict[str, np.ndarray]:
+    def sample(self, batch_size: int, n_step: int = 1, gamma: float = 0.99) -> dict[str, np.ndarray]:
         """Sample a batch of transitions from the replay buffer."""
-        
-        batch_indices = self._get_indices(batch_size)
-        return self._sample_from_indices(batch_indices)
+
+        batch_indices = self._get_indices(batch_size, n_step)
+        return self._sample_from_indices(batch_indices, n_step, gamma)
