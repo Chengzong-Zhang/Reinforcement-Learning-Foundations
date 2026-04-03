@@ -20,7 +20,7 @@ def get_action_dim(action_space: gym.spaces.Space) -> int:
         return len(action_space.nvec)
     elif isinstance(action_space, gym.spaces.MultiBinary):
         # Number of binary actions
-        return action_space.n
+        return int(np.prod(action_space.n))
     else:
         raise NotImplementedError(f"{action_space} action space is not supported")
 

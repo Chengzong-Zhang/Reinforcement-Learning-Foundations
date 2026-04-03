@@ -36,7 +36,7 @@ test_episodes: 10
 train_action_deterministic: true
 
 
-experiment_name: ${env.name}-${algorithm.name}
+experiment_name: ${env.name}-${algorithm.name}-nstep${algorithm.n_step}
 log_dir: outputs/${experiment_name}//${now:%Y-%m-%d_%H-%M-%S}
 
 hydra:
