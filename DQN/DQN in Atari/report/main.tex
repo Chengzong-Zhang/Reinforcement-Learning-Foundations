@@ -1,0 +1,141 @@
+% !TEX program = xelatex
+% This document is compiled using XeLaTeX
+% You can switch XeLaTeX/pdfLaTeX/LaTeX/LuaLaTeX in Settings
+
+
+\documentclass{article}
+\usepackage{xeCJK}         % 用于中文排版（需 XeLaTeX 编译）
+\usepackage[normalem]{ulem}
+%\setCJKmainfont{Adobe Heiti Std}
+\setlength{\parindent}{0pt}
+\usepackage{float}
+\usepackage{lmodern}
+\usepackage{amsmath}%支持矩阵
+\usepackage{amssymb}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{mathrsfs}
+\usepackage{geometry} % 导入geometry宏包以调整页边距
+\usepackage{listings} %导入listings宏包以插入代码
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+\lstset{
+    backgroundcolor=\color{white},   % 背景色
+    basicstyle=\ttfamily\footnotesize,    % 字体设置
+    breaklines=true,                      % 自动换行
+    columns=flexible,                     % 列宽自适应
+    keywordstyle=\color{blue},            % 关键字颜色
+    commentstyle=\color{green!50!black},  % 注释颜色
+    stringstyle=\color{red},              % 字符串颜色
+    showstringspaces=false,               % 不显示字符串中的空格
+    captionpos=b,                         % 标题位置在下
+    frame=single,                         % 给代码加框
+    numbers=left,                         % 行号位置
+    numberstyle=\tiny\color{gray},        % 行号样式
+    stepnumber=1                          % 行号递增方式
+}
+\usepackage{graphicx}  % 加载graphicx宏包
+\usepackage{minted}
+% 设置页边距
+\geometry{
+    a4paper, % 设置纸张大小为A4
+    left=3cm, % 左边距
+    right=3cm, % 右边距
+    top=1.5cm, % 上边距
+    bottom=2.5cm % 下边距
+}
+
+\title{DQN}
+\author{LAMDA-5}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{DQN算法设计}
+DQN（Deep Q-Network，深度Q网络） 是一种将深度学习与强化学习中的Q学习相结合的算法。它在2013年由DeepMind提出，并在2015年进行了完善，因在Atari游戏上超越人类水平的表现而闻名。
+
+在DQN出现之前，传统的Q学习算法主要依赖于Q table 来存储状态-动作的价值。这种方法在处理高维度、连续的状态空间（如游戏画面、机器人视觉输入）时会遇到根本性困难:
+\begin{itemize}
+    \item 维度灾难:如果直接用表格存储，状态空间会巨大无比（例如，一个Atari游戏的画面像素组合几乎是无限的），导致Q表无法构建和更新。
+    \item 泛化能力差：表格方法无法将学到的知识从见过的状态推广到未见过的相似状态。
+\end{itemize}
+
+为了解决上述问题，DQN创新性地引入了2个重要机制：
+\begin{itemize}
+    \item replay buffer:强化学习采集的样本（状态、动作、奖励、下一个状态）通常是序列相关的，如果直接按顺序学习，会导致模型训练不稳定。DQN引入 replay buffer，将智能体与环境互动的样本存储起来，训练时从中随机采样。这打破了数据之间的相关性，使得数据更接近独立同分布，提高了学习的稳定性。
+    \item target network：在Q-learning 中，如果用一个不断更新的网络来计算当前的Q值和目标Q值，两者会相互影响，导致Moving Target的情况，容易引发学习效果发散。由此DQN使用两个结构相同但参数更新频率不同的网络——评估网络和目标网络。目标网络的参数在一段时间内保持不变，每隔固定步数才从评估网络复制过来。这暂时固定了优化目标，显著提升了算法的收敛稳定性。
+\end{itemize}
+
+%\begin{figure}[htb]
+%	\centering
+%	\includegraphics[width=\linewidth]{截屏2026-03-13 16.25.31.png}
+%\end{figure}
+
+
+\section{Playing Atari with Deep Reinforcement Learning}
+仔细阅读文章“Playing Atari with Deep Reinforcement Learning”，重点关注实验部分（部分网络架构和参数已在文章中给出）。
+
+
+\section{TODO}
+具体实现部分参考代码中的README，主要步骤为配置环境、完成代码中TODO部分，实现并回答下述问题：
+
+\begin{enumerate}
+    \item \uline{在文件/utils/networks中实现CNN加全连接层网络初始化，以及前向传播。}
+    
+    \textbf{这部分的架构在Playing Atari with Deep Reinforcement Learning中已给出，找到并复现。}
+    
+   \item \uline{在文件/agent/atari\_agent中实现Q值的计算以及动作的选择，最后得到 Q 值查询接口。}
+   \begin{itemize}
+       \item \textbf{\_\_init\_\_}:初始化参数。
+       \item \textbf{select\_action}:利用上面实现的CNN加全连接层网络我们可以从数据集（图像）中获得Q函数的计算，并分别实现确定性的动作选择$$\pi_{deterministic}(a\mid s) = \arg\max_{a^\prime} Q(s,a^\prime)$$或是softmax 概率探索策略$$\pi_{softmax}(a\mid s) = \frac{\exp(Q(s,a)/\alpha)}{\sum_{a^\prime} \exp(Q(s,a^\prime)/\alpha)}$$
+   
+   softmax 概率探索策略能增加探索性，但是在使用$\epsilon$-greedy的情况下一般不需要再使用softmax探索
+       \item \textbf{get\_q,get\_max\_q}：实现Q值查询接口，分别计算$Q(s,a)$和$\max_{a'} Q(s,a')$
+   \end{itemize}
+
+   \item \uline{在文件/algorithm/offpolicy\_algorithm/dqn中实现epsilon-greedy 策略选择随机动作, 并通过}
+   
+   \uline{均方误差和梯度反向传播更新 Q 网络。}
+   \begin{itemize}
+       \item \textbf{\_\_init\_\_}:读取 DQN 超参数，定义目标网络的更新方式（软/硬更新）并根据配置选择优化器。
+       \item \textbf{\_target\_hard\_update}:每隔固定的步数直接将当前网络的参数复制给目标网络。
+       \item \textbf{\_target\_soft\_update}:在每个训练步中，用当前网络参数缓慢更新目标网络参数。
+       $$ \theta_{\text{target}} \leftarrow \tau \theta + (1 - \tau) \theta_{\text{target}}$$
+       其中$\tau$是一个很小的常数（一般取$\tau=0.001$或$\tau=0.005$）
+       \item \textbf{\_update\_policy}:这个函数是DQN算法的主体，负责从回放缓冲区采样、计算损失并更新网络。
+
+        其中单个(s,a)的目标值target计算为：
+%        \begin{figure}[htb]
+%	\centering
+%	\includegraphics[width=0.7\linewidth]{截屏2026-03-13 17.43.49.png}
+%\end{figure}
+
+这里的目标值计算需要使用target network，并且不需要反向传播梯度；全部误差需要从replay buffer采样并计算均方误差：
+
+ $$L = \mathbb{E}_{(s, a, r, s') \sim \mathcal{D}} \left[ (y - Q(s, a))^2 \right]$$
+       \item \textbf{random\_choose\_action}:
+       这一部分我们需要实现$\epsilon-greedy$策略，同时引入线性退火：$$\epsilon = \max \left( \epsilon_{\text{end}}, \ \epsilon_{\text{start}} - \frac{t}{T} (\epsilon_{\text{start}} - \epsilon_{\text{end}}) \right)$$
+
+       
+   \end{itemize}
+\end{enumerate}
+
+\section{实验与反思}
+
+\subsection{训练结果}
+
+默认训练环境是Pong，实现后可以先Debug过一遍代码流程，确保代码能跑通，确保训练过程中 loss、q\_mean和reward等训练曲线合理，同时测试性能在上升,并且最终能到DQN文章中的测试分数(Pong为21分)。
+
+\subsection{调参}
+
+调试参数，尝试修改各种参数例如学习率、EPS等，也可以尝试n-step实现，请至少尝试2个方向测试参数对算法性能的影响并尝试分析原因。其中n-step的数学公式如下：
+
+$$G_{t:t+n} = r_{t+1} + \gamma r_{t+2} + \dots + \gamma^{n-1} r_{t+n} + \gamma^n V(S_{t+n})$$
+
+\subsection{实际环境}
+
+在其他环境上测试DQN效果，可以自己任选一到两个环境(例如Breakout、SpaceInvaders、Seaquest等)去做测试，让实验效果和文章中的性能接近。
+ 
+\end{document}
