@@ -336,8 +336,8 @@ n\_step & 1 & 并行环境数 & 8（训练）/ 4（测试）\\
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=\linewidth]{../outputs/results4.1/paper_figure}
-    \caption{DQN在PongNoFrameskip-v4上的训练结果（n\_step=1，共20M步）。左图：测试奖励曲线（蓝色为原始值，深蓝为平滑后，红虚线为论文DQN均值20，绿虚线为满分21）；右图：TD Loss曲线。}
+    \includegraphics[width=\linewidth]{../outputs/results4.1/paper_figure_3panel}
+    \caption{DQN在PongNoFrameskip-v4上的训练结果（n\_step=1，共20M步）。左：测试奖励曲线（蓝色阴影=±1 std，深蓝虚线=平滑，红虚线=论文DQN均值20，绿虚线=满分21）；中：训练过程中的平均Q值曲线（\texttt{train/q\_value\_mean}）；右：TD Loss（MSE）曲线。}
     \label{fig:pong_n1}
 \end{figure}
 
@@ -351,7 +351,9 @@ n\_step & 1 & 并行环境数 & 8（训练）/ 4（测试）\\
     \item \textbf{收敛阶段（14M步以后）}：奖励稳定在 $19$–$21$ 附近，后10次测试均值为 \textbf{20.38}，与论文中DQN的报告值（20）高度吻合，验证了实现的正确性。
 \end{enumerate}
 
-TD Loss曲线整体呈下降趋势（从约 $10^{-1}$ 量级降至 $10^{-2}$ 量级），但中期存在较大波动，这与论文描述一致：奖励曲线较嘈杂，而Q值曲线更平滑。
+平均Q值曲线（图\ref{fig:pong_n1}中图）从初始的约 $-0.1$ 单调上升，在训练后期稳定于 $0.4$--$0.5$ 附近，与奖励曲线的三阶段上升趋势高度同步。Q值曲线比奖励曲线更平滑，这与原论文观察一致：平均Q值是衡量训练进展的良好指标，可作为奖励曲线噪声大时的辅助调试信号。
+
+TD Loss曲线（右图）整体呈下降趋势，但中期存在明显波动，最终收敛于 $5\times10^{-3}$ 量级，符合DQN在Pong上的典型行为。
 
 
 % ─────────────────────────────────────────────────────────────────────────────
@@ -385,18 +387,27 @@ n\_step=1即为标准1-step TD Bootstrap；n越大，目标中包含越多实际
 \label{tab:nstep_milestones}
 \end{table}
 
-\subsubsection{训练动态：Loss、稳定性、速度（方向二）}
+\subsubsection{收敛速度对比（方向一详图）}
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=\linewidth]{../outputs/4_2_nstep_comparison}
-    \caption{n\_step $\in \{1,2,3,5\}$ 的全面对比（蓝=n1，红=n2，绿=n3，橙=n5）。第一行：奖励曲线对比及收敛里程碑柱状图；第二行：TD-Loss曲线、奖励标准差、训练速度；第三行：Breakout与SpaceInvaders的训练曲线及跨环境得分对比。}
-    \label{fig:nstep_comparison}
+    \includegraphics[width=\linewidth]{../outputs/4_2a_reward_comparison}
+    \caption{$n\_step \in \{1,2,3,5\}$ 的奖励曲线对比（蓝=n1，红=n2，绿=n3，橙=n5）及收敛里程碑柱状图。左图展示四组奖励均值（±1 std阴影）随训练步数的变化；右图为各组首次到达得分$\geq 0$、$\geq 15$、$\geq 19$ 所需步数（单位：百万步）。}
+    \label{fig:nstep_reward}
+\end{figure}
+
+\subsubsection{训练动态：Loss、稳定性、速度（方向二详图）}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{../outputs/4_2b_dynamics}
+    \caption{$n\_step \in \{1,2,3,5\}$ 的训练动态对比（蓝=n1，红=n2，绿=n3，橙=n5）。左：TD-Loss曲线（对数坐标），反映各组收敛质量；中：奖励标准差，衡量策略稳定性；右：训练速度（每100k步所需分钟数）。}
+    \label{fig:nstep_dynamics}
 \end{figure}
 
 \subsubsection{原因分析}
 
-由表\ref{tab:nstep_milestones}和图\ref{fig:nstep_comparison}可以总结：
+由表\ref{tab:nstep_milestones}、图\ref{fig:nstep_reward}和图\ref{fig:nstep_dynamics}可以总结：
 
 \paragraph{方向一：收敛速度}
 \begin{itemize}
@@ -445,7 +456,16 @@ n\_step=1即为标准1-step TD Bootstrap；n越大，目标中包含越多实际
     \item SpaceInvaders：\texttt{SpaceInvadersNoFrameskip-v4}，动作空间为6，由于激光闪烁周期问题，原论文采用$k=3$的帧跳过（本实现沿用默认$k=4$）。
 \end{itemize}
 
-训练超参数与Pong保持一致（n\_step=1，lr=$10^{-4}$，20M总步数），训练曲线见图\ref{fig:nstep_comparison}第三行。
+训练超参数与Pong保持一致（n\_step=1，lr=$10^{-4}$，20M总步数），训练曲线见图\ref{fig:other_envs}。
+
+\subsubsection{训练曲线}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\linewidth]{../outputs/4_3_envs}
+    \caption{DQN在Breakout（左）与SpaceInvaders（中）上的训练曲线（蓝色阴影=±1 std，深色实线=平滑曲线），以及三环境最终得分的跨环境对比柱状图（右，对数坐标；Pong柱高为原始得分+22以适应对数轴，标注值为原始得分）。}
+    \label{fig:other_envs}
+\end{figure}
 
 \subsubsection{训练结果}
 

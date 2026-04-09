@@ -337,8 +337,202 @@ ax.grid(True, alpha=0.3, axis="y", which="both")
 ax.tick_params(axis="x", labelsize=9)
 
 
-# ── save ──────────────────────────────────────────────────────────────────────
+# ── save combined figure ───────────────────────────────────────────────────────
 out = os.path.join(BASE, "4_2_nstep_comparison.png")
 plt.savefig(out, dpi=160, bbox_inches="tight")
 print(f"Saved: {out}")
-plt.show()
+plt.close(fig)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Save individual sub-figures for LaTeX inclusion
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Fig 4.2a: Pong reward curves + convergence milestones ─────────────────────
+fig_a, (ax_ra, ax_ma) = plt.subplots(1, 2, figsize=(14, 5),
+                                      gridspec_kw={"width_ratios": [2, 1]})
+fig_a.suptitle(r"DQN $n\_step \in \{1,2,3,5\}$  |  PongNoFrameskip-v4  |  Reward Comparison",
+               fontsize=12, fontweight="bold")
+
+milestones_a = {}
+for n, (mean_df, std_df, _) in datasets.items():
+    steps_a = arr(mean_df["Step"])
+    mean_a  = arr(mean_df["Value"])
+    std_a   = arr(std_df["Value"])
+    sm      = steps_a / 1e6
+    c = CFG[n]
+    ax_ra.fill_between(sm, mean_a - std_a, mean_a + std_a, alpha=0.12, color=c["color"])
+    ax_ra.plot(sm, mean_a,            color=c["color"], lw=0.8, alpha=0.5)
+    ax_ra.plot(sm, smooth(mean_a, 7), color=c["dark"],  lw=2.0, label=c["label"])
+    milestones_a[n] = {t: first_reach(mean_a, steps_a, t) for t in THRESHOLDS}
+
+ax_ra.axhline(21,  color="black", lw=1.0, ls="--", alpha=0.5, label="Perfect score (21)")
+ax_ra.axhline(0,   color="gray",  lw=0.6, ls=":")
+ax_ra.axhline(-21, color="gray",  lw=0.6, ls=":")
+ax_ra.set_xlabel("Environment Steps (×10⁶)", fontsize=11)
+ax_ra.set_ylabel("Mean Episode Reward (10 epi.)", fontsize=11)
+ax_ra.set_title(r"Pong Reward Curves: $n\_step \in \{1, 2, 3, 5\}$", fontsize=11)
+ax_ra.legend(fontsize=9, loc="lower right")
+ax_ra.set_ylim(-23, 24)
+ax_ra.set_xlim(0, 20)
+ax_ra.grid(True, alpha=0.3)
+ax_ra.xaxis.set_major_formatter(mticker.FormatStrFormatter("%.0f"))
+note_a = (
+    "Final score (last-10 eval mean):\n"
+    + "\n".join(f"  n={n}: {final_means[n]:.1f}" for n in [1, 2, 3, 5])
+    + f"\n  ★ Best: n={best_n}"
+)
+ax_ra.text(0.02, 0.97, note_a, transform=ax_ra.transAxes, fontsize=8.5, va="top",
+           bbox=dict(boxstyle="round,pad=0.4", facecolor="lightyellow", alpha=0.85))
+
+thresholds_a = [0, 15, 19]
+xa      = np.arange(len(thresholds_a))
+width_a = 0.18
+offset_a = np.array([-1.5, -0.5, 0.5, 1.5]) * width_a
+for i, n in enumerate([1, 2, 3, 5]):
+    hts = [milestones_a[n][t] if milestones_a[n][t] is not None else 20.0 for t in thresholds_a]
+    bars_a = ax_ma.bar(xa + offset_a[i], hts, width_a,
+                       color=CFG[n]["color"], alpha=0.85, label=f"n={n}",
+                       edgecolor="white", linewidth=0.5)
+    for bar, h, t in zip(bars_a, hts, thresholds_a):
+        txt = f"{h:.1f}M" if milestones_a[n][t] is not None else "N/A"
+        ax_ma.text(bar.get_x() + bar.get_width() / 2, h + 0.25,
+                   txt, ha="center", va="bottom", fontsize=6)
+ax_ma.set_xticks(xa)
+ax_ma.set_xticklabels([f"score≥{t}" for t in thresholds_a], fontsize=9)
+ax_ma.set_ylabel("Steps to reach (M)", fontsize=9)
+ax_ma.set_title("Convergence Milestones\n(first reach threshold)", fontsize=10, fontweight="bold")
+ax_ma.set_ylim(0, 22)
+ax_ma.legend(fontsize=8)
+ax_ma.grid(True, alpha=0.3, axis="y")
+
+fig_a.tight_layout()
+out_a = os.path.join(BASE, "4_2a_reward_comparison.png")
+fig_a.savefig(out_a, dpi=160, bbox_inches="tight")
+print(f"Saved: {out_a}")
+plt.close(fig_a)
+
+
+# ── Fig 4.2b: TD-Loss + reward std + training speed ───────────────────────────
+fig_b, axes_b = plt.subplots(1, 3, figsize=(15, 5))
+fig_b.suptitle(r"DQN $n\_step$ Training Dynamics  |  PongNoFrameskip-v4  |  20M steps",
+               fontsize=12, fontweight="bold")
+
+ax = axes_b[0]
+ax.set_title("TD-Loss Curves", fontsize=11)
+for n, (_, _, net_df) in datasets.items():
+    vals_b  = arr(net_df["Value"])
+    steps_b = arr(net_df["Step"])
+    ds_b    = max(1, len(vals_b) // 200)
+    ls_b    = steps_b[::ds_b] / 1e6
+    lv_b    = vals_b[::ds_b]
+    c = CFG[n]
+    ax.plot(ls_b, lv_b,              color=c["color"], lw=0.5, alpha=0.35)
+    ax.plot(ls_b, smooth(lv_b, 20),  color=c["dark"],  lw=1.8, label=c["label"])
+ax.set_xlabel("Gradient Steps (×10⁶)", fontsize=10)
+ax.set_ylabel("TD Loss (MSE)", fontsize=10)
+ax.set_yscale("log")
+ax.legend(fontsize=8)
+ax.grid(True, alpha=0.3, which="both")
+
+ax = axes_b[1]
+ax.set_title("Reward Std (Policy Stability)", fontsize=11)
+for n, (mean_df, std_df, _) in datasets.items():
+    sm_b  = arr(mean_df["Step"]) / 1e6
+    sv_b  = arr(std_df["Value"])
+    c = CFG[n]
+    ax.plot(sm_b, sv_b,            color=c["color"], lw=0.6, alpha=0.4)
+    ax.plot(sm_b, smooth(sv_b, 7), color=c["dark"],  lw=1.8, label=c["label"])
+ax.set_xlabel("Environment Steps (×10⁶)", fontsize=10)
+ax.set_ylabel("Reward Std", fontsize=10)
+ax.legend(fontsize=8)
+ax.grid(True, alpha=0.3)
+
+ax = axes_b[2]
+ax.set_title("Training Speed (Wall-clock)", fontsize=11)
+for n, (mean_df, _, _) in datasets.items():
+    wt_b    = arr(mean_df["Wall time"])
+    sm2_b   = arr(mean_df["Step"])[1:] / 1e6
+    dt_b    = np.diff(wt_b) / 60
+    c = CFG[n]
+    ax.plot(sm2_b, dt_b,            color=c["color"], lw=0.6, alpha=0.4)
+    ax.plot(sm2_b, smooth(dt_b, 5), color=c["dark"],  lw=1.8, label=c["label"])
+ax.set_xlabel("Environment Steps (×10⁶)", fontsize=10)
+ax.set_ylabel("Minutes / 100k env-steps", fontsize=10)
+ax.legend(fontsize=8)
+ax.grid(True, alpha=0.3)
+
+fig_b.tight_layout()
+out_b = os.path.join(BASE, "4_2b_dynamics.png")
+fig_b.savefig(out_b, dpi=160, bbox_inches="tight")
+print(f"Saved: {out_b}")
+plt.close(fig_b)
+
+
+# ── Fig 4.3: Breakout + SpaceInvaders + cross-env bar ─────────────────────────
+fig_c, axes_c = plt.subplots(1, 3, figsize=(15, 5))
+fig_c.suptitle("DQN Generalization to Other Atari Environments  |  20M env steps",
+               fontsize=12, fontweight="bold")
+
+ax = axes_c[0]
+ax.set_title("BreakoutNoFrameskip-v4", fontsize=11)
+sm_bo  = arr(bo_mean["Step"]) / 1e6
+mn_bo  = arr(bo_mean["Value"])
+sd_bo  = arr(bo_std["Value"])
+ax.fill_between(sm_bo, mn_bo - sd_bo, mn_bo + sd_bo, alpha=0.15, color="steelblue")
+ax.plot(sm_bo, mn_bo,            color="steelblue", lw=0.8, alpha=0.5)
+ax.plot(sm_bo, smooth(mn_bo, 7), color="darkblue",  lw=2.0, label="Breakout")
+ax.set_xlabel("Environment Steps (×10⁶)", fontsize=10)
+ax.set_ylabel("Mean Episode Reward", fontsize=10)
+ax.set_xlim(0, 20)
+ax.grid(True, alpha=0.3)
+ax.legend(fontsize=9, loc="upper left")
+final_bo_c = float(mn_bo[-10:].mean())
+ax.text(0.98, 0.05, f"Final (last-10): {final_bo_c:.1f}",
+        transform=ax.transAxes, fontsize=8, va="bottom", ha="right",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.85))
+
+ax = axes_c[1]
+ax.set_title("SpaceInvadersNoFrameskip-v4", fontsize=11)
+sm_si  = arr(si_mean["Step"]) / 1e6
+mn_si  = arr(si_mean["Value"])
+sd_si  = arr(si_std["Value"])
+ax.fill_between(sm_si, mn_si - sd_si, mn_si + sd_si, alpha=0.15, color="mediumpurple")
+ax.plot(sm_si, mn_si,            color="mediumpurple", lw=0.8, alpha=0.5)
+ax.plot(sm_si, smooth(mn_si, 7), color="indigo",       lw=2.0, label="SpaceInvaders")
+ax.set_xlabel("Environment Steps (×10⁶)", fontsize=10)
+ax.set_ylabel("Mean Episode Reward", fontsize=10)
+ax.set_xlim(0, 20)
+ax.grid(True, alpha=0.3)
+ax.legend(fontsize=9, loc="upper left")
+final_si_c = float(mn_si[-10:].mean())
+ax.text(0.98, 0.05, f"Final (last-10): {final_si_c:.1f}",
+        transform=ax.transAxes, fontsize=8, va="bottom", ha="right",
+        bbox=dict(boxstyle="round,pad=0.3", facecolor="lightyellow", alpha=0.85))
+
+ax = axes_c[2]
+ax.set_title("Cross-Env Final Score Comparison", fontsize=11)
+best_pong_c  = float(final_means[best_n])
+pong_sh      = best_pong_c + 22.0
+envs_c       = [f"Pong\n(n={best_n})", "Breakout", "SpaceInvaders"]
+bar_hts_c    = [pong_sh, final_bo_c, final_si_c]
+raw_scores_c = [best_pong_c, final_bo_c, final_si_c]
+bar_cols_c   = [CFG[best_n]["color"], "steelblue", "mediumpurple"]
+bars_c = ax.bar(envs_c, bar_hts_c, color=bar_cols_c, alpha=0.85,
+                edgecolor="white", linewidth=0.8)
+for bar, raw in zip(bars_c, raw_scores_c):
+    ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() * 1.12,
+            f"{raw:.1f}", ha="center", va="bottom", fontsize=10, fontweight="bold")
+ax.set_yscale("log")
+ax.set_ylim(1, max(bar_hts_c) * 3)
+ax.set_ylabel("Mean Episode Reward (log scale)", fontsize=9)
+ax.text(0.5, -0.14, "* Pong bar = score + 22 (shifted for log scale; label shows raw score)",
+        transform=ax.transAxes, fontsize=7, ha="center", color="gray")
+ax.grid(True, alpha=0.3, axis="y", which="both")
+ax.tick_params(axis="x", labelsize=9)
+
+fig_c.tight_layout()
+out_c = os.path.join(BASE, "4_3_envs.png")
+fig_c.savefig(out_c, dpi=160, bbox_inches="tight")
+print(f"Saved: {out_c}")
+plt.close(fig_c)
