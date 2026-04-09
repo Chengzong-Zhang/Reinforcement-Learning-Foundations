@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999997 (MiKTeX 25.4) (preloaded format=xelatex 2026.3.11)  9 APR 2026 19:01
+This is XeTeX, Version 3.141592653-2.6-0.999997 (MiKTeX 25.4) (preloaded format=xelatex 2026.3.11)  9 APR 2026 21:33
 entering extended mode
  restricted \write18 enabled.
  file:line:error style messages enabled.
@@ -949,7 +949,7 @@ File: ../outputs/4_2b_dynamics.png Graphic file (type bmp)
 
 
 [7]
-Overfull \hbox (14.80069pt too wide) in paragraph at lines 474--485
+Overfull \hbox (10.43661pt too wide) in paragraph at lines 474--485
  [] 
  []
 

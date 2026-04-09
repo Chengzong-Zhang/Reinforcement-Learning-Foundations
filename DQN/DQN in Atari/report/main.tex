@@ -479,7 +479,7 @@ n\_step=1即为标准1-step TD Bootstrap；n越大，目标中包含越多实际
 最快收敛至$\geq15$ & n=2 & 后期Off-Policy偏差显现，n=2偏差最低 \\
 最终性能 & n=2（20.96） & Off-Policy偏差最小，Bellman目标最准确 \\
 训练稳定性 & n=2 & Loss曲线最平滑，Off-Policy误差累积最少 \\
-\textbf{综合建议} & \textbf{n=2或n=3} & 与Rainbow DQN结论（n=3最优）逻辑一致 \\
+\textbf{综合建议} & \textbf{n=2} & Off-Policy偏差最小，最终性能与稳定性最优 \\
 \bottomrule
 \end{tabular}
 \end{center}
