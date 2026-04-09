@@ -360,7 +360,7 @@ TD Loss曲线整体呈下降趋势（从约 $10^{-1}$ 量级降至 $10^{-2}$ 量
 
 \subsubsection{调优对象}
 
-本次调参选择 \textbf{n\_step}（多步TD目标的步数），在 $n \in \{1, 2, 3\}$ 三个值上进行对比实验。n-step TD目标定义为：
+本次调参选择 \textbf{n\_step}（多步TD目标的步数），在 $n \in \{1, 2, 3, 5\}$ 四个值上进行对比实验。n-step TD目标定义为：
 
 $$G_{t:t+n} = r_{t+1} + \gamma r_{t+2} + \cdots + \gamma^{n-1} r_{t+n} + \gamma^n V(S_{t+n})$$
 
@@ -371,15 +371,15 @@ n\_step=1即为标准1-step TD Bootstrap；n越大，目标中包含越多实际
 \begin{table}[H]
 \centering
 \caption{n-step对收敛里程碑的影响（PongNoFrameskip-v4，20M步）}
-\begin{tabular}{lccc}
+\begin{tabular}{lcccc}
 \toprule
-指标 & n=1 & n=2 & n=3 \\
+指标 & n=1 & n=2 & n=3 & n=5 \\
 \midrule
-首次得分 $\geq 0$ & 9.1M & \textbf{2.3M} & 4.0M \\
-首次得分 $\geq 15$ & 14.1M & \textbf{2.6M} & 4.9M \\
-首次得分 $\geq 19$ & 14.9M & \textbf{5.6M} & 4.9M \\
-首次得分 $\geq 21$ & 18.1M & \textbf{5.7M} & 9.1M \\
-后10次均值 & 20.38 & \textbf{20.96} & 20.55 \\
+首次得分 $\geq 0$  & 9.1M  & 2.3M          & 4.0M & \textbf{1.5M} \\
+首次得分 $\geq 15$ & 14.1M & \textbf{2.6M} & 4.9M & 3.8M \\
+首次得分 $\geq 19$ & 14.9M & 5.6M          & 4.9M & \textbf{4.2M} \\
+首次得分 $\geq 21$ & 18.1M & 5.7M          & 9.1M & \textbf{5.4M} \\
+后10次均值          & 20.38 & \textbf{20.96} & 20.55 & 20.91 \\
 \bottomrule
 \end{tabular}
 \label{tab:nstep_milestones}
@@ -390,7 +390,7 @@ n\_step=1即为标准1-step TD Bootstrap；n越大，目标中包含越多实际
 \begin{figure}[H]
     \centering
     \includegraphics[width=\linewidth]{../outputs/4_2_nstep_comparison}
-    \caption{n\_step $\in \{1,2,3\}$ 的全面对比（蓝=n1，红=n2，绿=n3）。上方：奖励曲线对比及收敛里程碑柱状图；下方：TD-Loss曲线、奖励标准差、训练速度。}
+    \caption{n\_step $\in \{1,2,3,5\}$ 的全面对比（蓝=n1，红=n2，绿=n3，橙=n5）。第一行：奖励曲线对比及收敛里程碑柱状图；第二行：TD-Loss曲线、奖励标准差、训练速度；第三行：Breakout与SpaceInvaders的训练曲线及跨环境得分对比。}
     \label{fig:nstep_comparison}
 \end{figure}
 
@@ -401,15 +401,17 @@ n\_step=1即为标准1-step TD Bootstrap；n越大，目标中包含越多实际
 \paragraph{方向一：收敛速度}
 \begin{itemize}
     \item \textbf{n=1} 的Bootstrap目标 $r + \gamma V(s')$ 完全依赖当前Q网络对下一状态的估计。初期网络极不精确，学习信号噪声大，导致收敛最慢（9.1M步才首次得分$\geq0$）。
-    \item \textbf{多步TD（n=2,3）} 的目标直接展开了更多真实奖励，减少对不精确Q值的依赖，偏差降低，有效加速了早期学习。
-    \item \textbf{n=3相比n=2无更大优势}：更长的轨迹引入更高方差（每步的随机性累积），偏差-方差权衡在n=2处达到较优平衡。
+    \item \textbf{多步TD（n=2,3,5）} 的目标直接展开了更多真实奖励，减少对不精确Q值的依赖，偏差降低，有效加速了早期学习。
+    \item \textbf{n=5的早期收敛最快}：首次得分$\geq0$仅需1.5M步，首次得分$\geq19$和$\geq21$也最快（分别4.2M和5.4M步），说明更长的n-step展开在Pong这一奖励稀疏且稠密的任务中能更充分地利用早期真实奖励信号。
+    \item \textbf{n=2在得分$\geq15$时最快（2.6M步）}：此阶段策略已部分掌握击球技能，n=2的低方差优势开始体现。
+    \item \textbf{偏差-方差权衡}：n=5虽然引入更高的蒙特卡洛方差，但Pong的单局长度有限（约200步），5步展开的方差累积并不严重，因此整体表现优于n=3。
 \end{itemize}
 
 \paragraph{方向二：训练动态}
 \begin{itemize}
-    \item \textbf{TD-Loss}：三者在对数尺度下整体均从 $10^{-1}$ 降至 $10^{-2}$ 量级。n=1的loss曲线中后期波动更剧烈，说明1-step目标与当前Q估计的不一致更持续；n=2/3的loss下降更平滑。
-    \item \textbf{奖励标准差}：收敛后n=2的std最低，策略最稳定；n=1在10M步后仍出现周期性波动。
-    \item \textbf{训练速度}：n\_step的计算开销差异可忽略（均摊至buffer.sample中）。n=2在笔记本（LAPTOP-MSUEU3UR）上运行，速度略慢于在服务器（amax-111）上运行的n=1和n=3，这是硬件差异而非算法差异。
+    \item \textbf{TD-Loss}：四者在对数尺度下整体均从 $10^{-1}$ 降至 $10^{-2}$ 量级。n=1的loss曲线中后期波动最剧烈；n=2/3/5的loss下降相对更平滑，n=5的loss整体偏高，反映了多步展开引入的更大目标方差。
+    \item \textbf{奖励标准差}：收敛后n=2的std最低，策略最稳定；n=5收敛后的std略高于n=2，表明策略的随机性受更长步展开的影响。
+    \item \textbf{最终得分}：n=2略高（20.96），n=5紧随其后（20.91），两者均显著优于n=1（20.38）。
 \end{itemize}
 
 \paragraph{总结}
@@ -419,10 +421,11 @@ n\_step=1即为标准1-step TD Bootstrap；n越大，目标中包含越多实际
 \toprule
 评估维度 & 最优值 & 原因 \\
 \midrule
-收敛速度 & n=2 & 偏差-方差平衡最优，早期利用真实奖励最充分 \\
-最终性能 & n=2（$\approx$21） & 最先、最稳定地达到满分 \\
+最快收敛至$\geq0/\geq19/\geq21$ & n=5 & 长步展开充分利用早期奖励，方差可控 \\
+最快收敛至$\geq15$ & n=2 & 低方差优势在中期最为突出 \\
+最终性能 & n=2（20.96） & 稳定性最优，后期偏差-方差最平衡 \\
 训练稳定性 & n=2 & Loss曲线最平滑，奖励std最低 \\
-\textbf{综合建议} & \textbf{n=2} & 三项维度均最优或接近最优 \\
+\textbf{综合建议} & \textbf{n=2或n=5} & n=5收敛最快，n=2最终性能略优 \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -442,26 +445,36 @@ n\_step=1即为标准1-step TD Bootstrap；n越大，目标中包含越多实际
     \item SpaceInvaders：\texttt{SpaceInvadersNoFrameskip-v4}，动作空间为6，由于激光闪烁周期问题，原论文采用$k=3$的帧跳过（本实现沿用默认$k=4$）。
 \end{itemize}
 
-\subsubsection{论文参考性能}
+训练超参数与Pong保持一致（n\_step=1，lr=$10^{-4}$，20M总步数），训练曲线见图\ref{fig:nstep_comparison}第三行。
 
-根据原论文结果（表\ref{tab:other_envs}），DQN在这两个游戏上均大幅超越Sarsa等传统方法，且在Breakout上超越人类水平：
+\subsubsection{训练结果}
 
 \begin{table}[H]
 \centering
-\caption{其他环境的参考性能对比（来自原论文）}
+\caption{本次实验与原论文DQN结果对比}
 \label{tab:other_envs}
-\begin{tabular}{lccc}
+\begin{tabular}{lcccc}
 \toprule
 方法 & Breakout & SpaceInvaders \\
 \midrule
 Random & 1.2 & 179 \\
 Sarsa & 5.2 & 271 \\
-\textbf{DQN（论文）} & \textbf{168} & \textbf{581} \\
+\textbf{DQN（论文，10M步）} & 168 & 581 \\
 Human & 31 & 3690 \\
+\midrule
+\textbf{本实验（后10次均值，20M步）} & \textbf{309.4} & \textbf{661.0} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Breakout得分168远超人类31分，说明DQN成功学习了"突破砖块"的长期策略；SpaceInvaders得分581高于人类基线，但离顶级人类玩家（3690）仍有差距，因为该游戏需要更长时间尺度的策略规划，对于仅具备有限历史窗口（4帧）的DQN存在挑战。
+\subsubsection{结果分析}
+
+\paragraph{Breakout}
+
+训练曲线（图\ref{fig:nstep_comparison}第三行左）呈现三段式上升：0--6M步内得分缓慢攀升至约10分（智能体学习"接球"基础技能）；6M--12M步快速上升至约150分（开始掌握"打角"策略）；12M步后继续爬升，后10次评测均值达 \textbf{309.4}，峰值 \textbf{386.6}。本实验得分大幅超越论文报告的168分，原因有两点：(1)~本实验训练步数更多（20M vs 10M）；(2)~Adam优化器与更大的batch size（256 vs 32）加速了收敛。本实验结果同时远超人类水平（31分），验证了DQN在Breakout上强大的策略规划能力。
+
+\paragraph{SpaceInvaders}
+
+训练曲线（图\ref{fig:nstep_comparison}第三行中）显示前5M步内得分已快速上升至约300--400分（初始状态下得分即已较高，因为智能体随机射击亦可得分）；5M步后持续稳定提升，后期出现明显波动，后10次均值为 \textbf{661.0}，峰值 \textbf{947.0}。本实验略优于论文报告的581分，但与人类顶级水平（3690）仍有显著差距。差距来源于：SpaceInvaders需要同时处理多个敌人的移动模式、子弹规避与主动进攻，要求更长时间尺度的协调规划；而仅具备4帧历史窗口的DQN难以学习敌方编队的长期运动规律。帧跳过参数（$k=4$ vs 论文的$k=3$）也可能导致部分激光帧被跳过而影响得分上限。
 
 \end{document}
