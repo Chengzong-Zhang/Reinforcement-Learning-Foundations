@@ -1,51 +1,62 @@
 \relax 
 \@writefile{toc}{\contentsline {section}{\numberline {1}DQN算法设计}{1}{}\protected@file@percent }
-\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces Deep Q-learning with Experience Replay}}{1}{}\protected@file@percent }
+\@writefile{loa}{\contentsline {algorithm}{\numberline {1}{\ignorespaces Deep Q-learning with Experience Replay}}{2}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {2}Playing Atari with Deep Reinforcement Learning}{2}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.1}问题设定}{2}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.2}网络架构}{2}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {2.3}训练细节}{2}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}论文实验结果}{2}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {3}TODO：代码实现}{2}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.4}论文实验结果}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}代码实现}{3}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.1}utils/networks.py：CNN网络架构}{3}{}\protected@file@percent }
 \@writefile{lol}{\contentsline {lstlisting}{\numberline {1}AtariDQNNetwork 网络定义}{3}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.2}agent/atari\_agent.py：Q值计算与动作选择}{3}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {3.2.1}select\_action}{3}{}\protected@file@percent }
 \@writefile{lol}{\contentsline {lstlisting}{\numberline {2}select\_action 实现}{3}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.2.2}get\_q 与 get\_max\_q}{3}{}\protected@file@percent }
-\@writefile{lol}{\contentsline {lstlisting}{\numberline {3}get\_q 与 get\_max\_q 实现}{3}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.2.2}get\_q 与 get\_max\_q}{4}{}\protected@file@percent }
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {3}get\_q 与 get\_max\_q 实现}{4}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.3}algorithm/offpolicy\_algorithm/dqn.py：DQN核心算法}{4}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {3.3.1}目标网络更新}{4}{}\protected@file@percent }
 \@writefile{lol}{\contentsline {lstlisting}{\numberline {4}硬更新与软更新}{4}{}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsubsection}{\numberline {3.3.2}\_update\_policy：计算TD目标与损失}{4}{}\protected@file@percent }
 \@writefile{lol}{\contentsline {lstlisting}{\numberline {5}\_update\_policy：DQN主体更新}{4}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.3.3}random\_choose\_action：$\epsilon $-greedy线性退火}{4}{}\protected@file@percent }
-\@writefile{lol}{\contentsline {lstlisting}{\numberline {6}epsilon-greedy 线性退火}{4}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {4}实验与反思}{5}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}训练结果（Pong）}{5}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.1.1}实验配置}{5}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.1.2}训练曲线}{5}{}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces DQN在PongNoFrameskip-v4上的训练结果（n\_step=1，共20M步）。左图：测试奖励曲线（蓝色为原始值，深蓝为平滑后，红虚线为论文DQN均值20，绿虚线为满分21）；右图：TD Loss曲线。}}{5}{}\protected@file@percent }
-\newlabel{fig:pong_n1}{{1}{5}{}{figure.1}{}}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.1.3}结果分析}{5}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}调参分析：n-step TD目标}{5}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.1}调优对象}{5}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.2}收敛速度与最终得分（方向一）}{6}{}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces n-step对收敛里程碑的影响（PongNoFrameskip-v4，20M步）}}{6}{}\protected@file@percent }
-\newlabel{tab:nstep_milestones}{{1}{6}{}{table.1}{}}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.3}训练动态：Loss、稳定性、速度（方向二）}{6}{}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces n\_step $\in \{1,2,3,5\}$ 的全面对比（蓝=n1，红=n2，绿=n3，橙=n5）。第一行：奖励曲线对比及收敛里程碑柱状图；第二行：TD-Loss曲线、奖励标准差、训练速度；第三行：Breakout与SpaceInvaders的训练曲线及跨环境得分对比。}}{6}{}\protected@file@percent }
-\newlabel{fig:nstep_comparison}{{2}{6}{}{figure.2}{}}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.2.4}原因分析}{7}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{方向一：收敛速度}{7}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{方向二：训练动态}{7}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{总结}{7}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}其他环境}{7}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.3.1}配置说明}{7}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.3.2}训练结果}{8}{}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces 本次实验与原论文DQN结果对比}}{8}{}\protected@file@percent }
-\newlabel{tab:other_envs}{{2}{8}{}{table.2}{}}
-\@writefile{toc}{\contentsline {subsubsection}{\numberline {4.3.3}结果分析}{8}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{Breakout}{8}{}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{SpaceInvaders}{8}{}\protected@file@percent }
-\gdef \@abspage@last{8}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {3.3.3}random\_choose\_action：$\epsilon $-greedy线性退火}{5}{}\protected@file@percent }
+\@writefile{lol}{\contentsline {lstlisting}{\numberline {6}epsilon-greedy 线性退火}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4}理论分析}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}经验回放的收敛性保证}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}目标网络稳定训练的直觉}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}n-step TD目标的偏差-方差权衡}{5}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}实验与反思}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}训练结果（Pong）}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.1.1}实验配置}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.1.2}训练曲线}{6}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces DQN在PongNoFrameskip-v4上的训练结果（n\_step=1，共20M步）。左：测试奖励曲线（蓝色阴影=±1 std，深蓝虚线=平滑，红虚线=论文DQN均值20，绿虚线=满分21）；中：训练过程中的平均Q值曲线（\texttt  {train/q\_value\_mean}）；右：TD Loss（MSE）曲线。}}{6}{}\protected@file@percent }
+\newlabel{fig:pong_n1}{{1}{6}{}{figure.1}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.1.3}结果分析}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{收敛速度分析}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}调参分析：n-step TD目标}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.2.1}调优对象}{6}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.2.2}收敛速度与最终得分（方向一）}{7}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces n-step对收敛里程碑的影响（PongNoFrameskip-v4，20M步）}}{7}{}\protected@file@percent }
+\newlabel{tab:nstep_milestones}{{1}{7}{}{table.1}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.2.3}收敛速度对比（方向一详图）}{7}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces $n\_step \in \{1,2,3,5\}$ 的奖励曲线对比（蓝=n1，红=n2，绿=n3，橙=n5）及收敛里程碑柱状图。左图展示四组奖励均值（±1 std阴影）随训练步数的变化；右图为各组首次到达得分$\geq 0$、$\geq 15$、$\geq 19$ 所需步数（单位：百万步）。}}{7}{}\protected@file@percent }
+\newlabel{fig:nstep_reward}{{2}{7}{}{figure.2}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.2.4}训练动态：Loss、稳定性、速度（方向二详图）}{7}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces $n\_step \in \{1,2,3,5\}$ 的训练动态对比（蓝=n1，红=n2，绿=n3，橙=n5）。左：TD-Loss曲线（对数坐标），反映各组收敛质量；中：奖励标准差，衡量策略稳定性；右：训练速度（每100k步所需分钟数）。}}{7}{}\protected@file@percent }
+\newlabel{fig:nstep_dynamics}{{3}{7}{}{figure.3}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.2.5}原因分析}{7}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{方向一：收敛速度}{8}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{方向二：训练动态}{8}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{总结}{8}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}其他环境}{8}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.3.1}配置说明}{8}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.3.2}训练曲线}{9}{}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces DQN在Breakout（左）与SpaceInvaders（中）上的训练曲线（蓝色阴影=±1 std，深色实线=平滑曲线），以及三环境最终得分的跨环境对比柱状图（右，对数坐标；Pong柱高为原始得分+22以适应对数轴，标注值为原始得分）。}}{9}{}\protected@file@percent }
+\newlabel{fig:other_envs}{{4}{9}{}{figure.4}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.3.3}训练结果}{9}{}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces 本次实验与原论文DQN结果对比}}{9}{}\protected@file@percent }
+\newlabel{tab:other_envs}{{2}{9}{}{table.2}{}}
+\@writefile{toc}{\contentsline {subsubsection}{\numberline {5.3.4}结果分析}{9}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{Breakout}{9}{}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{SpaceInvaders}{9}{}\protected@file@percent }
+\gdef \@abspage@last{9}

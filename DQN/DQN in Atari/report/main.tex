@@ -6,7 +6,9 @@
 \documentclass{article}
 \usepackage{xeCJK}         % 用于中文排版（需 XeLaTeX 编译）
 \usepackage[normalem]{ulem}
-%\setCJKmainfont{Adobe Heiti Std}
+\setCJKmainfont[BoldFont=SimHei]{SimSun}
+\setCJKsansfont{SimHei}
+\setCJKmonofont{FangSong}
 \setlength{\parindent}{0pt}
 \usepackage{float}
 \usepackage{lmodern}
@@ -46,7 +48,7 @@
 }
 
 \title{DQN}
-\author{LAMDA-5}
+\author{LAMDA-5\\241098117 张城宗}
 \date{\today}
 
 \begin{document}
@@ -76,7 +78,7 @@ $$L(\theta) = \mathbb{E}_{(s,a,r,s') \sim \mathcal{D}}\left[\left(y - Q(s,a;\the
 \end{itemize}
 
 \medskip
-算法的完整伪代码如下（来自原论文）：
+算法的完整伪代码如下（基于原论文2013年版Algorithm~1，并引入2015年Nature版的\textbf{目标网络}机制——原2013版算法使用同一网络计算目标值，目标网络硬更新步骤不在伪代码中显示，但在代码实现中生效）：
 
 \begin{algorithm}[H]
 \caption{Deep Q-learning with Experience Replay}
@@ -149,6 +151,12 @@ FC1 & 全连接+ReLU & 256 & — & — \\
     \item 帧跳过（frame skip）：每$k=4$帧选择一次动作（Space Invaders用$k=3$避免激光不可见）
 \end{itemize}
 
+\medskip
+\begin{tcolorbox}[colback=gray!8, colframe=gray!50, boxrule=0.5pt,
+    left=4pt, right=4pt, top=3pt, bottom=3pt]
+\textbf{注：本次实验与原论文的主要参数差异。}原论文使用 RMSProp 优化器、minibatch=32、Replay Buffer=100万帧；本次实验改用 Adam 优化器（lr=$10^{-4}$）、batch=256、Buffer=250,000帧，并将训练总帧数从10M增至20M，采用8个并行环境加速采样。这些改动在保留算法核心思路的前提下加速了收敛，最终性能与论文一致（Pong均值20）。
+\end{tcolorbox}
+
 \subsection{论文实验结果}
 
 论文在7款Atari游戏上评测，与以往最优方法对比如下：
@@ -171,7 +179,7 @@ DQN在全部7款游戏上以较大优势超越所有已有学习方法，并在B
 
 
 % ─────────────────────────────────────────────────────────────────────────────
-\section{TODO：代码实现}
+\section{代码实现}
 % ─────────────────────────────────────────────────────────────────────────────
 
 具体实现步骤参考代码中的README，主要步骤为配置环境、完成代码中TODO部分。以下展示各模块的核心实现。
@@ -229,14 +237,19 @@ def select_action(self, states, deterministic=False):
 
 \begin{lstlisting}[language=Python, caption={get\_q 与 get\_max\_q 实现}]
 def get_q(self, states, actions):
-    states_t  = to_correct_device_tensor(states, self.device) / 255.0
+    states_t  = to_correct_device_tensor(states, self.device)
+    if isinstance(states, np.ndarray) and states.dtype == np.uint8:
+        states_t = states_t / 255.0          # uint8 图像归一化至 [0,1]
     actions_t = to_correct_device_tensor(actions, self.device, dtype=torch.int64)
     q_values  = self.network(states_t)                      # (B, num_actions)
-    q_selected = torch.gather(q_values, 1, actions_t.reshape(-1, 1))
+    index      = actions_t.reshape(-1, 1)                   # (B,) -> (B,1)
+    q_selected = torch.gather(q_values, dim=1, index=index) # (B,1)
     return q_selected.squeeze(1)                            # (B,)
 
 def get_max_q(self, states):
-    states_t = to_correct_device_tensor(states, self.device) / 255.0
+    states_t = to_correct_device_tensor(states, self.device)
+    if isinstance(states, np.ndarray) and states.dtype == np.uint8:
+        states_t = states_t / 255.0          # uint8 图像归一化至 [0,1]
     with torch.no_grad():
         q_values = self.network(states_t)
     return q_values.max(dim=1).values                       # (B,)
@@ -271,25 +284,29 @@ def _update_policy(self):
     q = self.agent.get_q(batch['states'], batch['actions'])
 
     with torch.no_grad():   # 目标网络不参与梯度计算
-        max_next_q = self.target_agent.get_max_q(batch['next_states'])
+        if self.use_target:
+            max_next_q = self.target_agent.get_max_q(batch['next_states'])
+        else:
+            max_next_q = self.agent.get_max_q(batch['next_states'])
 
     rewards = torch.from_numpy(batch['rewards']).to(self.device)
     dones   = torch.from_numpy(batch['dones']).to(self.device)
 
     # n-step TD目标：r + gamma^n * max_a' Q_target(s', a') * (1 - done)
     td_target = rewards + self.gamma ** self.n_step * max_next_q * (1.0 - dones)
-    loss = F.mse_loss(q, td_target)
+    loss = LOSS_DICT["mse"](q, td_target)
 
     self.optimizer.zero_grad()
     loss.backward()
     self.optimizer.step()
 
     # 硬更新（每 target_update_interval 步）或软更新（每步）
-    if self.target_update_method == "hard":
-        if self.gradient_step % self.target_update_interval == 0:
-            self._target_hard_update()
-    else:
-        self._target_soft_update()
+    if self.use_target:
+        if self.target_update_method == "hard":
+            if self.gradient_step % self.target_update_interval == 0:
+                self._target_hard_update()
+        else:
+            self._target_soft_update()
 \end{lstlisting}
 
 \subsubsection{random\_choose\_action：$\epsilon$-greedy线性退火}
@@ -307,6 +324,27 @@ def random_choose_action(self):
     return np.random.rand() < self.epsilon
 \end{lstlisting}
 
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{理论分析}
+% ─────────────────────────────────────────────────────────────────────────────
+
+\subsection{经验回放的收敛性保证}
+
+经验回放（Replay Buffer）从理论上打破了样本的时序相关性。设策略在时刻 $t$ 采集的样本为 $(s_t, a_t, r_t, s_{t+1})$，相邻样本满足马尔可夫依赖 $s_{t+1} \sim P(\cdot | s_t, a_t)$，直接对序列做梯度下降会使样本协方差矩阵偏离对角结构，导致梯度估计有偏。引入大小为 $N$ 的Replay Buffer后，每次从 $\mathcal{D}$ 中均匀采样一个minibatch，当 $N$ 足够大时，采样分布近似平稳分布 $\mu$，有效消除了时序相关性，使梯度估计满足：
+$$\nabla_\theta L(\theta) \approx \mathbb{E}_{(s,a,r,s') \sim \mu}\!\left[\left(r + \gamma \max_{a'} Q(s', a'; \theta^-) - Q(s,a;\theta)\right) \nabla_\theta Q(s,a;\theta)\right]$$
+
+\subsection{目标网络稳定训练的直觉}
+
+若无目标网络，损失函数中的目标 $y = r + \gamma \max_{a'} Q(s', a'; \theta)$ 与 $Q(s,a;\theta)$ 共享同一参数 $\theta$，每次梯度更新会同时改变目标，形成"追着移动靶"的正反馈振荡。引入目标网络 $\theta^-$（每 $C$ 步才同步一次），使得在 $C$ 步内目标 $y$ 固定，从而将问题局部化为监督回归：
+$$\theta \leftarrow \theta - \alpha \nabla_\theta \left(y_j - Q(\phi_j, a_j; \theta)\right)^2, \quad y_j \text{ 固定}$$
+这保证了短期梯度方向的一致性，实验中可观察到目标网络带来的显著收敛稳定性（Loss曲线中期振荡减小）。
+
+\subsection{n-step TD目标的偏差-方差权衡}
+
+标准1-step TD目标 $G^{(1)} = r_{t+1} + \gamma V(s_{t+1})$ 的偏差来自 $V(s_{t+1})$ 的估计误差，方差来自单步奖励随机性；$n$-step目标展开为：
+$$G^{(n)}_t = \sum_{k=0}^{n-1} \gamma^k r_{t+k+1} + \gamma^n V(s_{t+n})$$
+随着 $n$ 增大，对 $V$ 的依赖减小（偏差降低），但累积奖励项的随机性增大（方差升高）。在Pong中单局约200步、稠密奖励的环境下，$n=5$ 的5步展开方差仍可控，偏差降低带来的增益占主导，因此 $n=5$ 收敛最快；而 $n=2$ 在偏差-方差上最均衡，最终稳定性最优。
 
 % ─────────────────────────────────────────────────────────────────────────────
 \section{实验与反思}
@@ -354,6 +392,8 @@ n\_step & 1 & 并行环境数 & 8（训练）/ 4（测试）\\
 平均Q值曲线（图\ref{fig:pong_n1}中图）从初始的约 $-0.1$ 单调上升，在训练后期稳定于 $0.4$--$0.5$ 附近，与奖励曲线的三阶段上升趋势高度同步。Q值曲线比奖励曲线更平滑，这与原论文观察一致：平均Q值是衡量训练进展的良好指标，可作为奖励曲线噪声大时的辅助调试信号。
 
 TD Loss曲线（右图）整体呈下降趋势，但中期存在明显波动，最终收敛于 $5\times10^{-3}$ 量级，符合DQN在Pong上的典型行为。
+
+\paragraph{收敛速度分析} 探索阶段（0--3M步）Replay Buffer持续被随机经验填充，有效训练样本稀少；当 $\epsilon$ 退火至约0.3时，Buffer中开始积累足够多的"得分"正样本，加之目标网络每10,000步同步一次保证了目标稳定，策略的快速跃迁（3M--14M步）体现了DQN在状态空间充分覆盖后的高效学习能力。最终收敛得分20.38与论文值20高度一致，验证了本实现的正确性。
 
 
 % ─────────────────────────────────────────────────────────────────────────────
@@ -473,7 +513,7 @@ n\_step=1即为标准1-step TD Bootstrap；n越大，目标中包含越多实际
 \centering
 \caption{本次实验与原论文DQN结果对比}
 \label{tab:other_envs}
-\begin{tabular}{lcccc}
+\begin{tabular}{lcc}
 \toprule
 方法 & Breakout & SpaceInvaders \\
 \midrule
@@ -491,10 +531,10 @@ Human & 31 & 3690 \\
 
 \paragraph{Breakout}
 
-训练曲线（图\ref{fig:nstep_comparison}第三行左）呈现三段式上升：0--6M步内得分缓慢攀升至约10分（智能体学习"接球"基础技能）；6M--12M步快速上升至约150分（开始掌握"打角"策略）；12M步后继续爬升，后10次评测均值达 \textbf{309.4}，峰值 \textbf{386.6}。本实验得分大幅超越论文报告的168分，原因有两点：(1)~本实验训练步数更多（20M vs 10M）；(2)~Adam优化器与更大的batch size（256 vs 32）加速了收敛。本实验结果同时远超人类水平（31分），验证了DQN在Breakout上强大的策略规划能力。
+训练曲线（图\ref{fig:other_envs}左）呈现三段式上升：0--6M步内得分缓慢攀升至约10分（智能体学习"接球"基础技能）；6M--12M步快速上升至约150分（开始掌握"打角"策略）；12M步后继续爬升，后10次评测均值达 \textbf{309.4}，峰值 \textbf{386.6}。本实验得分大幅超越论文报告的168分，原因有两点：(1)~本实验训练步数更多（20M vs 10M）；(2)~Adam优化器与更大的batch size（256 vs 32）加速了收敛。本实验结果同时远超人类水平（31分），验证了DQN在Breakout上强大的策略规划能力。Breakout的奖励信号相对密集（每次击砖得分），且状态空间规律性强，CNN能较快提取球和挡板的相对位置特征，因此最终得分远高于论文值并超越人类。
 
 \paragraph{SpaceInvaders}
 
-训练曲线（图\ref{fig:nstep_comparison}第三行中）显示前5M步内得分已快速上升至约300--400分（初始状态下得分即已较高，因为智能体随机射击亦可得分）；5M步后持续稳定提升，后期出现明显波动，后10次均值为 \textbf{661.0}，峰值 \textbf{947.0}。本实验略优于论文报告的581分，但与人类顶级水平（3690）仍有显著差距。差距来源于：SpaceInvaders需要同时处理多个敌人的移动模式、子弹规避与主动进攻，要求更长时间尺度的协调规划；而仅具备4帧历史窗口的DQN难以学习敌方编队的长期运动规律。帧跳过参数（$k=4$ vs 论文的$k=3$）也可能导致部分激光帧被跳过而影响得分上限。
+训练曲线（图\ref{fig:other_envs}中）显示前5M步内得分已快速上升至约300--400分（初始状态下得分即已较高，因为智能体随机射击亦可得分）；5M步后持续稳定提升，后期出现明显波动，后10次均值为 \textbf{661.0}，峰值 \textbf{947.0}。本实验略优于论文报告的581分，但与人类顶级水平（3690）仍有显著差距。差距来源于：SpaceInvaders需要同时处理多个敌人的移动模式、子弹规避与主动进攻，要求更长时间尺度的协调规划；而仅具备4帧历史窗口的DQN难以学习敌方编队的长期运动规律。帧跳过参数（$k=4$ vs 论文的$k=3$）也可能导致部分激光帧被跳过而影响得分上限。从理论角度看，SpaceInvaders需要智能体同时维护多个敌方目标的位置与移动模式，等效于一个需要长期规划的POMDP；仅有4帧历史的DQN本质上是一个有限记忆的近似策略，在此类长时序任务上存在系统性局限。
 
 \end{document}
