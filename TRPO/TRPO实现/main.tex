@@ -1,0 +1,111 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{xeCJK}% 导入xeCJK宏包，用于支持中文
+\usepackage[UTF8]{CJKutf8}  % 支持 UTF-8 编码
+\usepackage{xcolor} 
+\usepackage{xeCJK}         % 用于中文排版
+\usepackage[normalem]{ulem}
+\usepackage[UTF8]{CJKutf8}
+%\setCJKmainfont{Adobe Heiti Std}
+\setlength{\parindent}{0pt}
+\usepackage{float}
+\usepackage{lmodern}
+\usepackage{amsmath}%支持矩阵
+\usepackage{amssymb}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{mathrsfs}
+\usepackage{geometry} % 导入geometry宏包以调整页边距
+\usepackage{listings} %导入listings宏包以插入代码
+\usepackage{xcolor}
+\usepackage{tcolorbox}
+\lstset{
+    backgroundcolor=\color{white},   % 背景色
+    basicstyle=\ttfamily\footnotesize,    % 字体设置
+    breaklines=true,                      % 自动换行
+    columns=flexible,                     % 列宽自适应
+    keywordstyle=\color{blue},            % 关键字颜色
+    commentstyle=\color{green!50!black},  % 注释颜色
+    stringstyle=\color{red},              % 字符串颜色
+    showstringspaces=false,               % 不显示字符串中的空格
+    captionpos=b,                         % 标题位置在下
+    frame=single,                         % 给代码加框
+    numbers=left,                         % 行号位置
+    numberstyle=\tiny\color{gray},        % 行号样式
+    stepnumber=1                          % 行号递增方式
+}
+\usepackage{graphicx}  % 加载graphicx宏包
+\usepackage{minted}
+% 设置页边距
+\geometry{
+    a4paper, % 设置纸张大小为A4
+    left=3cm, % 左边距
+    right=3cm, % 右边距
+    top=1.5cm, % 上边距
+    bottom=2.5cm % 下边距
+}
+
+\title{TRPO}
+\author{LAMDA-5}
+\date{\today}
+
+\begin{document}
+\maketitle
+我们这次的目标是实现算法TRPO（\textbf{Trust Region Policy Optimization，\\https://arxiv.org/pdf/1502.05477}）， 是2015年由当时在UC Berkeley读博的John Schulman及其导师Pieter Abbeel等人所提出，发表在 JMLR ，目前引用量已过万。它成功地将传统运筹学中的“信赖域”方法引入深度强化学习，首次在深度神经网络模型上为策略优化提供了 “单调改进”的数学保证，这意味着原则上每次更新都会让策略变得更好，不会出现灾难性退步。
+
+\section{代码补全}
+该项目的实现参考了\textbf{\textcolor{blue}{https://spinningup.openai.com/en/latest/algorithms/trpo.html}}，请\textbf{补全文件/algorithm/trpo.py中的TODO部分}（完善函数compute\_advantages\_from\_traj，compute\_advantages\_from\_rollout，以及\_update\_policy，相关功能要求已在注释中标出）。并回答下述问题：
+\subsection{\textbf{collect\_trajectories} 实现部分}
+\begin{enumerate}
+    \item collect\_trajectories与普通 rollout 采样方式相比，数据收集的停止条件分别是什么？
+    \item 在 trajectory 采样模式下，每一条轨迹需要保存哪些信息？这些信息分别在后续 TRPO 更新中起什么作用？，当环境返回终止信号时，轨迹又会如何结束？未达到最大长度的部分又应如何处理？
+    \item TrajectoryRollout中的 masks变量有什么作用？如果不使用 masks，计算 return 或 advantage 时可能出现什么问题？
+    \item collect\_trajectories在收集完一批轨迹后为什么需要重新初始化环境状态？
+\end{enumerate}
+\subsection{\textbf{\_update\_policy} 实现部分}
+该部分理论主要依赖于\textbf{Trust Region Policy Optimization中的Theorem 1}，代码实现参考\textbf{https://spinningup.openai.com/en/latest/algorithms/trpo.html中的Algorithm 1}:
+\begin{figure}[htb]
+	\centering
+	\includegraphics[scale=0.6]{截屏2026-04-28 16.14.53.png}
+\end{figure}
+
+
+\begin{enumerate}
+    \item 解释该公式中每一项的实际意义，这个公式在什么情况下可以保证策略的单调改进？由此直观解释TRPO算法的设计思路（优化目标和约束的设计？先概述你的大致想法，具体细节在后续提问中体现）。
+    \item 和文章Approximately optimal approximate reinforcement learning中的Theorem 4.1（即TRPO论文中的公式(6)）作对比，TRPO作者在分析上的处理技术有什么具体的不同，使得TRPO可以推广到所有一般的随机策略类而不是给定的混合策略类？
+    \item TRPO 中策略更新的 surrogate objective~$L_{\pi_{\text{old}}}(\pi_{\text{new}})$ 一项在实际算法中是如何设计的？
+    \item 为什么 TRPO 需要约束新旧策略之间的 KL divergence而不是定理中的TV距离？在实际算法中我们采用KL散度的二阶近似$D_{\text{KL}}(\pi_{\theta_{\text{old}}}\| \pi_\theta) \sim \frac{1}{2} \Delta\theta^T (\nabla^2_\theta D_{\text{KL}})\Delta\theta$，延续该思路解释为什么在Algorithm 1中我们会采用line search搜索参数(Algorithm 1 line 8\&9)？
+\end{enumerate}
+\section{探索部分}
+请从以下五个环境中至少选择三个进行测试：
+\textbf{Humanoid-v5}, \textbf{Ant-v5}, \textbf{HalfCheetah-v5}, \textbf{Hopper-v5}, \textbf{Walker2d-v5}
+并思考下述问题：
+\begin{enumerate}
+    \item 在相同超参数设置下，三个环境的训练难度是否一致？请结合 reward 曲线进行分析。
+    \item 哪个环境中 trajectory 与 rollout 的样本利用率差异最明显？可能的原因是什么？
+    \item 在 trajectory 模式和 rollout 模式下，advantage 与 return 的计算方式有什么不同？
+\end{enumerate}
+
+\subsection{Advantage Normalization 的影响}
+
+\begin{enumerate}
+    \item 请分别设置 advan\_norm=true和 advan\_norm=false进行实验。两组实验的平均回报曲线有何差异？
+    \item 加入 advantage normalization 后，训练过程是否更加稳定？请结合 reward 曲线、KL divergence 或 surrogate objective 的变化进行分析。
+    \item 在你选择的测试环境中，advantage normalization 是否总是带来性能提升？如果不是，可能的原因是什么？
+\end{enumerate}
+
+\subsection{Trajectory 与 Rollout 的样本利用率比较}
+\begin{enumerate}
+    \item 在 rollout 模式下，每次策略更新实际使用了多少个 transition？在 trajectory 模式下，每次策略更新又实际使用了多少个有效 transition？
+    \item 对比 trajectory 与 rollout 两种模式，哪一种样本利用率更高？
+    \item 样本利用率更高是否一定意味着训练效果更好？请结合实验曲线进行分析。
+\end{enumerate}
+
+\section{总结与反思}
+\begin{enumerate}
+    \item 在本项目中，collect\_trajectories的实现是否会改变 TRPO 的 on-policy 特性？说出你的判断理由。
+    \item 如果只能保留一种采样方式，你会选择 trajectory 还是 rollout？请结合样本利用率和训练性能说明理由。
+    \item \textbf{完成实验报告的撰写后，你对TRPO算法是否有了新的感悟或认识？（\textcolor{red}{这个问题不建议AI辅助生成，AI时代最珍贵的是人类自我的想法。相信你写完报告后总会有一些自己的思考，或许是疑惑或许是感悟，完善与否不重要，写出你自己的想法就好。}）}
+    \item \textbf{针对本次算法实现，你是否有什么想法和想改进的建议，你在实现过程中有没有因为项目README.md或者实验报告引导和介绍问题导致卡了很久，如果有，请详细说明，并给出你的建议。关于代码/实验报告问题难度你是否有感觉很难/简单？}
+\end{enumerate}
+\end{document}
