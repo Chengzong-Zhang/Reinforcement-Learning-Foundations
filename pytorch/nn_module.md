@@ -180,7 +180,7 @@ net = nn.Sequential(
 
 ## 五、一张图总结
 
-```
+```text
 nn.Module
 ├── __init__()          → 定义层（赋值给 self.xxx 即自动追踪参数）
 ├── forward()           → 定义数据流向（调用 net(x) 时自动触发）
