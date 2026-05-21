@@ -400,3 +400,4 @@ RLfromscratch/
 Markdown 文件本质上还是普通文本文件。你看到的 `.md` 原文是给人和机器看的结构化文本；按 `Ctrl + Shift + V` 打开的预览，是 VS Code 帮你渲染后的阅读版本。
 
 所以写 Markdown 时可以记住一句话：原文要清楚，预览会漂亮。
+
