@@ -35,6 +35,8 @@ Thumbs.db
 *.log
 *.tmp
 *.bak
+*.aux
+*.synctex.gz
 
 # RL / ML outputs
 runs/
@@ -45,9 +47,9 @@ weights/
 videos/
 monitor/
 wandb/
+outputs_server*/
 *.pt
 *.pth
 *.ckpt
 *.onnx
 *.pkl
-
