@@ -57,6 +57,9 @@ SURROGATE = "train/actor/new_surrogate_target"
 COLLECTED = "train/samples/collected_transitions"
 EFFECTIVE = "train/samples/effective_transitions"
 UTILIZATION = "train/samples/utilization"
+VALUE_LOSS = "train/value/loss"
+BACKTRACK = "train/actor/backtrack_step"
+STEPSIZE = "train/actor/stepsize"
 
 
 def load_run(run_dir: Path) -> dict[str, tuple[np.ndarray, np.ndarray]]:
@@ -236,6 +239,72 @@ def plot_trajectory_rollout_rewards(
     save_figure(figure, "trajectory_rollout_rewards")
 
 
+def plot_training_diagnostics(
+    runs: dict[tuple[str, bool], dict[str, tuple[np.ndarray, np.ndarray]]],
+) -> None:
+    """3 rows × 3 cols: critic value loss / backtrack steps / step size,
+    comparing advan_norm true vs false on rollout runs."""
+    figure, axes = plt.subplots(3, 3, figsize=(15, 11), constrained_layout=True)
+    for column, environment in enumerate(ENVIRONMENTS):
+        for normalized, color in ((True, "tab:blue"), (False, "tab:orange")):
+            label = f"advan_norm={str(normalized).lower()}"
+            run = runs[(environment, normalized)]
+
+            vl_steps, vl_values = run[VALUE_LOSS]
+            finite = np.isfinite(vl_values)
+            axes[0, column].plot(
+                vl_steps[finite] / 1e6,
+                np.maximum(vl_values[finite], 1e-3),
+                color=color, linewidth=1.2, label=label, alpha=0.85,
+            )
+
+            bt_steps, bt_values = run[BACKTRACK]
+            axes[1, column].plot(
+                bt_steps / 1e6, moving_average(bt_values, 20),
+                color=color, linewidth=1.4, label=label,
+            )
+
+            ss_steps, ss_values = run[STEPSIZE]
+            finite = np.isfinite(ss_values) & (ss_values > 0)
+            axes[2, column].plot(
+                ss_steps[finite] / 1e6,
+                np.maximum(ss_values[finite], 1e-6),
+                color=color, linewidth=1.2, label=label, alpha=0.85,
+            )
+
+        axes[0, column].set_title(f"{environment}-v5")
+        axes[0, column].set_yscale("log")
+        axes[2, column].set_yscale("log")
+        for row in range(3):
+            axes[row, column].set_xlabel("Interaction steps (million)")
+            axes[row, column].grid(alpha=0.3)
+    axes[0, 0].set_ylabel("Critic value loss (log)")
+    axes[1, 0].set_ylabel("Backtrack steps (20-pt avg)")
+    axes[2, 0].set_ylabel("Step size (log)")
+    axes[0, -1].legend()
+    save_figure(figure, "training_diagnostics")
+
+
+def diagnostic_summary(
+    runs: dict[tuple[str, bool], dict[str, tuple[np.ndarray, np.ndarray]]],
+) -> None:
+    print("\n=== Training diagnostic summary ===")
+    for environment in ENVIRONMENTS:
+        for normalized in (True, False):
+            run = runs[(environment, normalized)]
+            vl = run[VALUE_LOSS][1]
+            bt = run[BACKTRACK][1]
+            ss = run[STEPSIZE][1]
+            vl_finite = vl[np.isfinite(vl)]
+            ss_finite = ss[np.isfinite(ss) & (ss > 0)]
+            print(
+                f"{environment:12s} norm={str(normalized):5s} "
+                f"value_loss mean={vl_finite.mean():.2f} max={vl_finite.max():.2e} "
+                f"backtrack mean={bt.mean():.2f} max={int(bt.max())} "
+                f"stepsize mean={ss_finite.mean():.3e}"
+            )
+
+
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     advantage_runs = {key: load_run(path) for key, path in ADVANTAGE_RUNS.items()}
@@ -247,6 +316,8 @@ def main() -> None:
     plot_advantage_stability(advantage_runs)
     plot_sample_utilization(sample_rows)
     plot_trajectory_rollout_rewards(trajectory_runs, advantage_runs)
+    plot_training_diagnostics(advantage_runs)
+    diagnostic_summary(advantage_runs)
     print(f"Wrote analysis artifacts to {OUTPUT_DIR}")
 
 

@@ -31,14 +31,14 @@
 }
 
 % 行间距
-\setstretch{1.3}
+\setstretch{1.18}
 
 % 段落格式
 \setlength{\parindent}{2em}
-\setlength{\parskip}{0.4em}
+\setlength{\parskip}{0.25em}
 
 % 列表格式
-\setlist{itemsep=0.3em, topsep=0.5em, parsep=0pt}
+\setlist{itemsep=0.15em, topsep=0.25em, parsep=0pt}
 \setlist[enumerate]{label=(\arabic*)}
 
 \pagestyle{plain}
@@ -101,21 +101,10 @@
 $10^{33}$ 的非有限值，导致策略学习几乎失败。
 \end{abstract}
 
-%% ============================================================
-\section{实验概况}
-%% ============================================================
+\section{实验设置}
 
-\subsection{实验环境}
-
-本实验选取 \textbf{Humanoid-v5}、\textbf{HalfCheetah-v5} 和 \textbf{Walker2d-v5} 三个
-MuJoCo Gymnasium v5 环境，对比以下四种配置：
-\begin{itemize}
-    \item 采样方式：rollout 与 trajectory
-    \item 优势归一化：\texttt{advan\_norm=true} 与 \texttt{advan\_norm=false}
-\end{itemize}
-
-\subsection{超参数设置}
-
+本实验在 Humanoid-v5、HalfCheetah-v5 和 Walker2d-v5 三个 MuJoCo Gymnasium v5 环境上比较
+两种采样方式（rollout / trajectory）与是否做 advantage normalization 的影响。
 主要超参数见表~\ref{tab:hyperparams}。
 
 \begin{table}[H]
@@ -135,17 +124,16 @@ MuJoCo Gymnasium v5 环境，对比以下四种配置：
 GAE 参数 $\lambda$ & 0.95 \\
 KL 约束阈值 $\delta$ & 0.01 \\
 共轭梯度迭代次数 & 10 \\
-Critic 更新轮数 & 5 \\
-策略/价值网络结构 & 2 层 MLP (64, 64)，Tanh 激活 \\
+Critic 优化器 & Adam，学习率 $10^{-3}$ \\
+Critic 更新轮数 / 批大小 & 5 / 256 \\
+策略/价值网络结构 & 2 层 MLP (64, 64)，ReLU 激活；动作经 Tanh 压缩至动作空间 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\subsection{实验结果汇总}
-
-表~\ref{tab:summary} 汇总了三个环境在各配置下的关键指标。"最终测试回报"取训练末期测试数据的
-均值；trajectory 模式因总交互步数与 rollout 不同，所报数值为相近交互步数处的测试结果，以
-${}^\dag$ 标注。
+表~\ref{tab:summary} 汇总了各配置下的关键指标。最终测试回报取训练末期均值；
+trajectory 模式总交互步数与 rollout 不同，所报数值为相近交互步数处的测试结果，
+以 ${}^\dag$ 标注。
 
 \begin{table}[H]
 \centering
@@ -180,66 +168,41 @@ ${}^\dag$ 标注。
 
 \subsection{\texttt{collect\_trajectories} 实现}
 
-\subsubsection{采样停止条件}
+\subsubsection{与普通 rollout 的停止条件}
 
-\textbf{问：}collect\_trajectories 与普通 rollout 采样方式相比，数据收集的停止条件分别是什么？
+普通 rollout 按固定步数截断：每个 epoch 每个并行环境交互满 \texttt{interact\_per\_epoch}
+步就返回，不等 episode 结束，buffer 里通常跨多个 episode。
+\texttt{collect\_trajectories} 改用轨迹条数截断：外层循环直到
+\texttt{TrajectoryRollout} 存满 \texttt{trajnum} 条轨迹才停止，每条轨迹以环境
+\texttt{done} 或达到 \texttt{max\_episode\_length} 结束。
 
-\medskip
-\textbf{答：}普通 rollout（\texttt{interact\_with\_envs}）按固定步数截断：每个 epoch
-每个并行环境交互满 \texttt{interact\_per\_epoch} 步即返回，不等 episode 结束。
+\subsubsection{每条轨迹保存的信息及其作用}
 
-\texttt{collect\_trajectories} 按轨迹条数截断：外层循环条件为
-\texttt{while not self.traj\_rollout.full}，直到存满 \texttt{trajnum} 条轨迹才停止；
-每条轨迹以"环境终止"或"达到 \texttt{max\_episode\_length}"为内部结束条件。
+每条轨迹保存 \texttt{states}、\texttt{actions}、\texttt{rewards}、\texttt{dones}、
+\texttt{log\_probs}。\texttt{states} 让 actor 重算 $\log\pi_\theta(a|s)$，也让 critic
+估计 $V$；\texttt{actions} 与 \texttt{states} 配合算重要性采样比率；
+\texttt{rewards} 用于反向递推 GAE；\texttt{dones} 在递推时乘以 $(1-d_t)$ 切断 episode
+边界的 bootstrap；\texttt{log\_probs} 是旧策略概率，用来构造
+$r_t(\theta)=\exp(\log\pi_\theta-\log\pi_{\theta_{\mathrm{old}}})$。
 
-\subsubsection{轨迹数据与 Episode 边界处理}
+\subsubsection{终止信号下的轨迹收尾与 padding}
 
-\textbf{问：}在 trajectory 采样模式下，每一条轨迹需要保存哪些信息？这些信息分别在后续
-TRPO 更新中起什么作用？当环境返回终止信号时，轨迹又会如何结束？未达到最大长度的部分
-又应如何处理？
-
-\medskip
-\textbf{答：}每条轨迹保存 \texttt{states}、\texttt{actions}、\texttt{rewards}、
-\texttt{dones}、\texttt{log\_probs}，对应 \texttt{add\_traj()} 的输入字段：
-\begin{itemize}
-    \item \texttt{states}：供 actor 重算 $\log\pi_\theta(a|s)$，供 critic 估计 $V(s_t)$；
-    \item \texttt{actions}：与 \texttt{states} 配合计算重要性采样比率；
-    \item \texttt{rewards}：从后往前递推 GAE 和 return；
-    \item \texttt{dones}：递推时乘以 $(1-d_t)$ 切断 episode 边界的 bootstrap；
-    \item \texttt{log\_probs}：旧策略概率，用于计算 $\exp(\log\pi_\theta - \log\pi_{\theta_{\mathrm{old}}})$。
-\end{itemize}
-环境返回终止信号时立即调用 \texttt{add\_traj()} 保存当前轨迹并重置该 env 的缓冲区。
-未填满 \texttt{max\_episode\_length} 的剩余位置保持零初始化，\texttt{masks} 置为 0，
-后续用 \texttt{masks==1} 过滤掉 padding。
+环境返回 \texttt{done} 或 \texttt{truncated} 时调用 \texttt{add\_traj()} 保存当前轨迹、
+重置该 env 的缓冲区；未填满 \texttt{max\_episode\_length} 的位置保持零初始化，对应
+\texttt{masks} 置 0，下游用 \texttt{masks==1} 过滤掉 padding。
 
 \subsubsection{\texttt{masks} 的作用}
 
-\textbf{问：}TrajectoryRollout 中的 masks 变量有什么作用？如果不使用 masks，计算 return
-或 advantage 时可能出现什么问题？
+\texttt{TrajectoryRollout} 预分配形状是 \texttt{(trajnum, max\_episode\_length)}，
+短轨迹后必有零填充，\texttt{add\_traj()} 中用 \texttt{self.masks[pos,:traj\_len]=1}
+记录真实长度。如果不 mask 直接计算，padding 的零奖励会污染 GAE，advantage 的均值
+方差被拉低、归一化随之偏移，样本利用率统计也会虚高，value 拟合的还是无意义的目标。
 
-\medskip
-\textbf{答：}\texttt{masks[i,t]=1} 表示该位置是真实 transition，\texttt{=0} 表示
-padding。\texttt{TrajectoryRollout} 预分配形状为
-\texttt{(trajnum, max\_episode\_length)}，短轨迹后必有零填充，\texttt{add\_traj()} 中
-\texttt{self.masks[pos,:traj\_len]=1} 记录真实长度。
+\subsubsection{为何要在每批轨迹收集完后重新初始化环境}
 
-若不使用 \texttt{masks}，会产生如下问题：
-\begin{itemize}
-    \item padding 的零奖励和零状态污染 return/advantage 的均值与方差，advantage
-          normalization 随之偏移；
-    \item GAE 反向递推可能将无效步当成真实 transition，导致 critic 和 actor 梯度失真；
-    \item 样本利用率统计虚高，掩盖实际有效 transition 数量。
-\end{itemize}
-
-\subsubsection{采样后重置环境的必要性}
-
-\textbf{问：}collect\_trajectories 在收集完一批轨迹后为什么需要重新初始化环境状态？
-
-\medskip
-\textbf{答：}当缓冲区满时，某些环境可能停在 episode 中途，其 \texttt{observations}
-是非起点状态。若不重置，下一轮轨迹从这些中间状态开始，破坏"从初始分布出发"的假设，
-轨迹边界不干净。\texttt{initialize()} 确保每轮采样从 episode 起点开始，使 on-policy 的
-"采样—更新—清空"流程清晰，避免上一批残留状态污染下一批新策略的数据。
+不 reset 的话，某些 env 会停在 episode 中途，下一轮 trajectory 从非起点状态开始，
+违背"从初始分布 $\rho_0$ 出发"的假设。这一步不影响 TRPO 的 on-policy 性质：数据始终
+来自当前策略，更新一次后即清空缓冲区。
 
 %% -------------------------------------------------------
 \subsection{\texttt{\_update\_policy} 实现}
@@ -257,111 +220,58 @@ $\epsilon = \max_{s,a}|A_{\pi_{\mathrm{old}}}(s,a)|$，则下界成立：
 \]
 \end{theorembox}
 
-\subsubsection{定理含义与单调改进条件}
+\subsubsection{定理各项含义与单调改进条件}
 
-\textbf{问：}解释该公式中每一项的实际意义，这个公式在什么情况下可以保证策略的单调改进？
-由此直观解释 TRPO 算法的设计思路。
+$L_{\pi_{\mathrm{old}}}(\pi_{\mathrm{new}})$ 是固定旧策略状态分布下的代理目标（重要性采样
+加权 advantage），$\frac{4\epsilon\gamma}{(1-\gamma)^2}\alpha^2$ 是新旧策略 TV 距离引起的
+惩罚项，其中 $\epsilon=\max_{s,a}|A_\pi(s,a)|$ 是 advantage 的绝对值上界，
+$\alpha=D_\mathrm{TV}^{\max}(\pi_\mathrm{old},\pi_\mathrm{new})$ 是新旧策略最大 TV 距离。
 
-\medskip
-\textbf{答：}各项含义如下：
-\begin{itemize}
-    \item $\eta(\pi_{\mathrm{new}})$：新策略的真实期望累积折扣回报；
-    \item $L_{\pi_{\mathrm{old}}}(\pi_{\mathrm{new}})$：固定旧策略状态分布下的代理目标
-          （重要性采样加权 advantage）；
-    \item $\dfrac{4\epsilon\gamma}{(1-\gamma)^2}\alpha^2$：新旧策略 TV 距离的惩罚项，
-          量化用旧分布近似新分布的误差；
-    \item $\epsilon = \max_{s,a}|A_\pi(s,a)|$：advantage 函数的绝对值上界；
-    \item $\alpha = D_{\mathrm{TV}}^{\max}(\pi_{\mathrm{old}}, \pi_{\mathrm{new}})$：
-          新旧策略最大 TV 距离。
-\end{itemize}
 只要代理目标提升量超过惩罚项，即
 $L_{\pi_{\mathrm{old}}}(\pi_{\mathrm{new}}) - \frac{4\epsilon\gamma}{(1-\gamma)^2}\alpha^2
-\geq \eta(\pi_{\mathrm{old}})$，
-下界上升，策略性能单调改进。TRPO 的设计思路是：最大化 $L$（鼓励 advantage 为正的动作）
-同时约束策略变化幅度，即在"可信域"内寻找最优更新：
+\geq \eta(\pi_{\mathrm{old}})$，下界上升，策略单调改进。关键的几何直觉：收益项
+$L-\eta(\pi_{\mathrm{old}})$ 对策略偏离量 $\alpha$ 是一次的，惩罚项 $C\alpha^2$ 是二次的；
+$\alpha$ 接近 $0$ 时二次项小一个数量级，所以一定存在小的 $\alpha$ 让收益压过惩罚——
+"步子迈得够小就一定能改进"在数学上是有保证的。TRPO 顺着这个直觉走：最大化 $L$
+同时把策略变化压在"信赖域"内：
 \[
     \max_{\pi_{\mathrm{new}}}\; L_{\pi_{\mathrm{old}}}(\pi_{\mathrm{new}})
     \quad \text{s.t.} \quad
     D_{\mathrm{KL}}^{\max}(\pi_{\mathrm{old}}, \pi_{\mathrm{new}}) \leq \delta.
 \]
+这条定理决定的是 TRPO 的设计坐标系，而不是它实际能跑多好——深度 RL 里梯度是有限样本估计、
+策略非线性、advantage 方差大，"步长足够小"在实践中既要够小又得让训练不至于学不动。
 
-需要注意的是，这个定理更像是 TRPO 的设计坐标系，而不是对实际训练效果的完整解释。
-如果只停留在"存在足够小的更新步长可以带来局部改进"这一层，普通 policy gradient 在精确
-梯度和足够小步长下也有类似的局部优化直觉。真正困难的是：深度强化学习中使用的是有限
-样本估计、非线性神经网络策略和高方差 advantage，步长过小会导致学习极慢，步长稍大又
-可能让采样分布剧烈漂移。因此 TRPO 的关键不是单调改进公式本身，而是把"不要离旧策略太远"
-变成一套可执行的更新规则：用 KL 描述策略分布距离，用 Fisher 信息矩阵修正梯度方向，
-再用共轭梯度和线搜索把这个规则落实到大规模神经网络上。
+\subsubsection{与 Kakade--Langford Theorem 4.1 的处理差异}
 
-\subsubsection{向任意随机策略的推广}
+Kakade--Langford 早期结果只对混合策略 $\pi_\mathrm{new}=(1-\alpha)\pi_\mathrm{old}+\alpha\pi'$
+成立，$\alpha$ 是显式的混合系数，策略类被限制为旧策略与某个候选策略的线性组合。
+TRPO 把 $\alpha$ 直接定义为 $D_\mathrm{TV}^{\max}(\pi_\mathrm{old},\pi_\mathrm{new})$，
+不再依赖显式混合形式，因此可以覆盖任意随机策略——包括神经网络参数化的高斯策略，
+这是 TRPO 能直接落到深度 RL 上的前提。
 
-\textbf{问：}与 Theorem 4.1 对比，TRPO 如何推广到所有随机策略类？
+\subsubsection{Surrogate Objective 的实际形式}
 
-\medskip
-\textbf{答：}Kakade--Langford 的 Theorem 4.1 要求新策略为混合形式
-$\pi_{\mathrm{new}}=(1-\alpha)\pi_{\mathrm{old}}+\alpha\pi'$，
-偏离旧策略的概率显式等于 $\alpha$，分析局限于此混合策略类，不适用于神经网络参数化的
-一般策略。TRPO 令
+代理目标的理论形式
+$L_{\pi_\mathrm{old}}(\pi_\mathrm{new})=\eta(\pi_\mathrm{old})+\sum_s d^{\pi_\mathrm{old}}(s)\sum_a \pi_\mathrm{new}(a|s)A_{\pi_\mathrm{old}}(s,a)$
+依赖真实的旧策略状态分布 $d^{\pi_\mathrm{old}}$，无法精确得到。工程上用旧策略采样数据
+做 Monte Carlo 估计，并通过重要性采样修正：
 \[
-    \alpha = \max_s D_{\mathrm{TV}}\!\left(\pi_{\mathrm{old}}(\cdot|s),\,
-    \pi_{\mathrm{new}}(\cdot|s)\right)
+    \hat L(\theta) = \frac{1}{N}\sum_{t=1}^{N}
+    \frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_{\mathrm{old}}}(a_t|s_t)}\,\hat A_t,
 \]
-作为"单步采到不同动作的概率上界"，不要求 $\pi_{\mathrm{new}}$ 有特定结构，并重新分析了
-新旧策略下状态访问分布的偏移 $\|d^{\pi_{\mathrm{new}}}(s) - d^{\pi_{\mathrm{old}}}(s)\|$，
-证明时间维度上的累积误差可由 $O(\alpha^2)$ 控制，从而将性能界推广到任意随机策略
-（包括神经网络参数化的高斯策略）。
-
-\subsubsection{Surrogate Objective 的实际设计}
-
-\textbf{问：}surrogate objective $L_{\pi_{\mathrm{old}}}(\pi_{\mathrm{new}})$ 在实际算法
-中是如何设计的？
-
-\medskip
-\textbf{答：}理论上，代理目标的精确定义为：
-\[
-    L_{\pi_{\mathrm{old}}}(\pi_{\mathrm{new}})
-    = \eta(\pi_{\mathrm{old}})
-    + \sum_s d^{\pi_{\mathrm{old}}}(s)\sum_a \pi_{\mathrm{new}}(a|s)
-      A_{\pi_{\mathrm{old}}}(s,a).
-\]
-注意到在 $\theta = \theta_{\mathrm{old}}$ 处，$L$ 与真实目标 $\eta(\pi_\theta)$ 有相同的
-梯度，即 $\nabla_\theta L|_{\theta_{\mathrm{old}}} = \nabla_\theta \eta|_{\theta_{\mathrm{old}}}$。
-因此对 $L$ 做一阶泰勒展开：
-\[
-    L(\theta) \approx \eta(\theta_{\mathrm{old}}) + g^\top(\theta - \theta_{\mathrm{old}}),
-    \quad g = \nabla_\theta L\big|_{\theta=\theta_{\mathrm{old}}},
-\]
-常数项 $\eta(\theta_{\mathrm{old}})$ 不影响优化方向，可直接对梯度项 $g^\top(\theta - \theta_{\mathrm{old}})$
-最大化。
-
-由于真实状态访问分布 $d^{\pi_{\mathrm{old}}}(s)$ 无法精确获得，工程实现中使用旧策略采样数据做
-Monte Carlo 估计，并通过重要性采样修正采样偏差：
-\[
-    \hat{L}(\theta) = \frac{1}{N}\sum_{t=1}^{N}
-    \underbrace{\frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_{\mathrm{old}}}(a_t|s_t)}}_{r_t(\theta)}\,\hat{A}_t,
-\]
-其中 $\hat{A}_t$ 由 GAE 估计。代码实现：先保存采样时的 \texttt{old\_log\_probs}，
-更新时令 \texttt{ratio = torch.exp(new\_log\_probs - old\_log\_probs)}，
+$\hat A_t$ 由 GAE 估计。代码中先保存采样时的 \texttt{old\_log\_probs}，
+更新时计算 \texttt{ratio = exp(new\_log\_probs - old\_log\_probs)}，
 最后 \texttt{surrogate = (ratio * advantages).mean()}。
+在 $\theta=\theta_\mathrm{old}$ 处 $\hat L$ 与 $\eta$ 的梯度相等（两者相差一个常数
+$\eta(\pi_\mathrm{old})$），所以沿 $\hat L$ 的梯度走极小步就等价于沿 $\eta$ 走。
 
-\subsubsection{KL 约束与线搜索的必要性}
+\subsubsection{为什么约束 KL 而非 TV，为什么需要线搜索}
 
-\textbf{问：}为什么 TRPO 需要约束 KL divergence 而不是定理中的 TV 距离？为什么需要
-line search？
-
-\medskip
-\textbf{答：}
-
-\paragraph{为什么用 KL 代替 TV。}
-由 Pinsker 不等式：
-\[
-    D_{\mathrm{TV}}(p, q) \leq \sqrt{\tfrac{1}{2}D_{\mathrm{KL}}(p\|q)},
-\]
-约束 KL 散度即可隐式约束 TV 距离，且约束更紧。此外，KL 散度对高斯策略等常见分布具有闭式
-表达且处处可微，而 TV 距离在连续空间中不光滑，难以高效求梯度或做二阶近似。
-
-\paragraph{Fisher 信息矩阵与自然梯度。}
-在当前参数 $\theta_{\mathrm{old}}$ 邻域内，对 KL 散度做二阶泰勒展开：
+TRPO 实际约束的是 KL 而非定理中的 TV。由 Pinsker 不等式
+$D_\mathrm{TV}(p,q) \leq \sqrt{\tfrac{1}{2}D_\mathrm{KL}(p\|q)}$，
+约束 KL 就能隐式控制 TV，且约束更紧；KL 对高斯策略有闭式且处处可微，
+TV 在连续空间不光滑、难以做梯度和二阶近似。在当前参数邻域，对 KL 做二阶泰勒展开：
 \[
     D_{\mathrm{KL}}(\theta_{\mathrm{old}}, \theta) \approx
     \tfrac{1}{2}\Delta\theta^\top F\,\Delta\theta,
@@ -373,40 +283,19 @@ line search？
       \nabla_\theta\log\pi_\theta^\top
     \right]\bigg|_{\theta_{\mathrm{old}}}
 \]
-其中 $F$ 为 Fisher 信息矩阵（FIM）。信赖域约束化为椭球约束
-$\frac{1}{2}\Delta\theta^\top F\Delta\theta \leq \delta$。
-在局部线性化目标 $\max_{\Delta\theta} g^\top\Delta\theta$ 下，最优方向为自然梯度方向
-$\Delta\theta_{\mathrm{base}} = F^{-1}g$。这说明 TRPO 与自然策略梯度
-（Natural Policy Gradient, NPG）关系很近：二者都不是在参数空间的欧氏距离下直接走
-普通梯度，而是在策略分布的 KL 几何下修正下降方向~\cite{npg,spinningup}。
-从 mirror descent 角度看，KL 可以被理解为一种 Bregman divergence，策略更新是在
-"线性化目标 + 邻近项"之间折中；后续 MDPO 工作也明确将 TRPO、PPO 等 trust-region
-方法放到 mirror descent 框架下比较~\cite{mdpo}。
+其中 $F$ 是 Fisher 信息矩阵，信赖域约束因此化为椭球约束
+$\frac{1}{2}\Delta\theta^\top F\Delta\theta \leq \delta$。线性化 surrogate 后的最优方向
+就是自然梯度 $\Delta\theta_\mathrm{base}=F^{-1}g$——这其实就是自然策略梯度（NPG）的思路
+~\cite{npg,spinningup}：不在参数欧氏距离下走普通梯度，而是在策略分布的 KL 几何下修正方向；
+后续 MDPO 等工作也把 TRPO、PPO 放在 mirror descent 框架下统一比较~\cite{mdpo}。
+满足约束的最大步长为
+$\Delta\theta^* = \sqrt{2\delta/(\Delta\theta_\mathrm{base}^\top F\Delta\theta_\mathrm{base})}\cdot\Delta\theta_\mathrm{base}$。
 
-满足约束的最大步长为：
-\[
-    \Delta\theta^* =
-    \sqrt{\frac{2\delta}{\Delta\theta_{\mathrm{base}}^\top F\,\Delta\theta_{\mathrm{base}}}}
-    \;\Delta\theta_{\mathrm{base}}.
-\]
-
-但神经网络策略的参数量很大，显式构造并求逆 $F$ 的代价不可接受，正如牛顿法在大规模模型中
-难以直接求逆 Hessian 一样。因此代码中只实现 Hessian-vector product：
-\texttt{kl\_product(v)} 计算 $Fv$，再用共轭梯度近似求解线性方程 $Fx=g$。这样无需保存
-完整矩阵，就能得到 $x\approx F^{-1}g$。本实验实现中的阻尼项
-\texttt{return product + vector * 0.1} 还相当于对 $F$ 加上 $\lambda I$，用于改善数值条件。
-
-\paragraph{为什么还需要 line search。}
-二阶近似仅在 $\theta_{\mathrm{old}}$ 附近局部有效，非线性网络和有限 batch 估计误差
-会导致实际 KL 超过 $\delta$ 或 surrogate 不提升。因此采用回溯线搜索：
-\[
-    \theta_k = \theta_{\mathrm{old}} + \beta^k \Delta\theta^*, \quad \beta \in (0,1),
-\]
-逐步缩小步长，直到同时满足：(1) $D_{\mathrm{KL}}^{\mathrm{real}}(\theta_{\mathrm{old}},
-\theta_k) \leq \delta$；(2) surrogate objective 不下降。两个条件缺一不可——仅满足 KL 约束
-可能对应 surrogate 下降；仅满足 surrogate 提升可能违反信赖域边界。若所有候选步长均失败，
-则回滚参数。相对自然梯度方向和共轭梯度求解，line search 更像是对二阶近似的工程兜底；
-它很重要，但并不是 TRPO 区别于普通 policy gradient 的唯一核心。
+神经网络参数太多，显式构造并求逆 $F$ 不现实。代码中只实现 Hessian-vector product：
+\texttt{kl\_product(v)} 计算 $Fv$，再用共轭梯度近似解 $Fx=g$，得到 $x\approx F^{-1}g$；
+实现里 \texttt{return product + vector * 0.1} 相当于给 $F$ 加阻尼 $\lambda I$ 改善条件数。
+最后还要做回溯线搜索：沿 $\theta_k=\theta_\mathrm{old}+\beta^k\Delta\theta^*$ 逐步缩小步长，
+直到实际 KL $\leq\delta$ 且 surrogate 不下降；两个条件缺一不可，全部候选失败则回滚参数。
 
 %% ============================================================
 \section{探索部分}
@@ -414,55 +303,29 @@ $\Delta\theta_{\mathrm{base}} = F^{-1}g$。这说明 TRPO 与自然策略梯度
 
 \subsection{不同环境的训练难度}
 
-本文选择 \textbf{Humanoid-v5}、\textbf{HalfCheetah-v5} 和 \textbf{Walker2d-v5} 进行测试。
-
-三者训练难度并不一致。在完整 rollout 实验末期，三者平均回报分别约为 $1083$、$4276$
-和 $4718$。HalfCheetah 与 Walker2d 的 reward 曲线持续上升并收敛至较高水平；Humanoid
-的回报提升较慢且最终值显著较低，说明其高维状态（348 维）、动作空间及复杂身体协调
-要求显著提高了策略优化难度，同样超参数下 TRPO 很难在相同训练步数内达到同等水平。
-
-\subsection{Trajectory 与 Rollout 的样本利用率差异}
-
-按实际有效 transition 占采集 transition 的比例计算，\textbf{HalfCheetah-v5} 中两种模式
-的差异最明显：rollout 利用率为 $100\%$，trajectory 平均利用率仅为 $62.50\%$，相差
-$37.50$ 个百分点。
-
-原因在于 HalfCheetah 的 episode 通常运行至 $1000$ 步上限，多个并行环境的结束时间高度
-同步；\texttt{TrajectoryRollout} 只需存满 $10$ 条轨迹，当第二批 $8$ 个环境同时完成时，
-仅有 $2$ 条能够写入缓冲区，其余已采集轨迹不参与本次策略更新。
+三个环境的难度差异很明显：rollout 末期平均回报分别约为 Humanoid $1083$、
+HalfCheetah $4276$、Walker2d $4718$。HalfCheetah 和 Walker2d 的曲线持续上升并收敛到较高水平；
+Humanoid 因为 348 维状态和复杂的身体协调要求，提升慢、最终值也低，同样超参数下很难追上。
 
 \subsection{Advantage 与 Return 的计算差异}
 
-两种模式均采用 GAE（Generalized Advantage Estimation）：
-\[
-    \delta_t = r_t + \gamma(1-d_t)V(s_{t+1}) - V(s_t), \qquad
-    A_t = \delta_t + \gamma\lambda(1-d_t)A_{t+1},
-\]
-并令 $R_t = A_t + V(s_t)$。主要区别在于：
-\begin{itemize}
-    \item \textbf{Trajectory 模式}：分别对每条完整轨迹做反向递推，并使用 \texttt{masks}
-          去除 padding，episode 边界处理更精确。
-    \item \textbf{Rollout 模式}：对每个并行环境的固定长度片段做反向递推，所有 transition
-          均参与更新，无需 mask，但末端若未自然终止则忽略末端 bootstrap，
-          引入 truncation bias。
-\end{itemize}
-
-当前实现中，两种模式均将采样片段最后一步的下一状态价值设为 $0$；对自然终止的
-trajectory 这是合理的，而对未终止即被截断的 rollout 会产生 advantage 与 return 的估计
-偏差，这也部分解释了为什么在高维任务中 trajectory 有时表现更好。
+两种模式都使用 GAE：
+$\delta_t = r_t + \gamma(1-d_t)V(s_{t+1}) - V(s_t)$，
+$A_t = \delta_t + \gamma\lambda(1-d_t)A_{t+1}$，$R_t=A_t+V(s_t)$。
+区别是：trajectory 对每条完整轨迹反向递推、用 \texttt{masks} 去 padding，
+episode 边界更精确；rollout 对固定长度片段反向递推，所有 transition 都参与更新，
+但若片段末端不是自然终止，把末端 value 当作 0 就会引入 truncation bias。
+本项目两种模式都把最后一步 next value 置零，这对自然终止的 trajectory 合理，
+对截断的 rollout 不完全合理。这一差异部分解释了为什么 trajectory 在高维任务中
+有时表现更好。
 
 \subsection{Advantage Normalization 的影响}
 
-\subsubsection{两组实验平均回报曲线差异}
+\subsubsection{两组配置的回报曲线差异}
 
-本节固定使用 rollout 模式，仅改变 \texttt{advan\_norm}。如图~\ref{fig:advnorm-reward}
-所示，不同环境的结果差异很大：
-\begin{itemize}
-    \item HalfCheetah：不归一化组最终测试平均回报约为 $4608$，高于归一化组的 $4276$；
-    \item Humanoid：两组最终回报几乎相同，分别约为 $1085$ 和 $1083$；
-    \item Walker2d：归一化组最终达到约 $4718$，而不归一化组长期停留在约 $355$，
-          几乎未能学会有效行走策略。
-\end{itemize}
+固定 rollout 模式、只切换 \texttt{advan\_norm}，三个环境差异很大（图~\ref{fig:advnorm-reward}）：
+HalfCheetah 不归一化反而更高（$4608$ vs $4276$），Humanoid 两组几乎一样（$1085$ vs $1083$），
+Walker2d 完全相反——归一化组达到 $4718$，不归一化长期停留在 $355$，基本没学到。
 
 \begin{figure}[H]
     \centering
@@ -471,19 +334,13 @@ trajectory 这是合理的，而对未终止即被截断的 rollout 会产生 ad
     \label{fig:advnorm-reward}
 \end{figure}
 
-\subsubsection{Advantage Normalization 对训练稳定性的影响}
+\subsubsection{训练是否更稳定}
 
-总体而言，advantage normalization 提高了跨环境训练的鲁棒性，但并非在每个环境中都让
-reward 曲线更平滑。最明显的例子是 Walker2d：不归一化时 surrogate objective 只有
-$86.6\%$ 的记录为有限值，其有限值的最大绝对值达约 $9.83\times10^{33}$；同时平均 KL
-仅为 $0.00213$，约 $4.0\%$ 的更新中 KL 接近 $0$，说明大量策略更新退化或失败。
-归一化后 surrogate objective 全部为有限值，平均 KL 为 $0.00881$，能够较稳定地利用
-$\delta=0.01$ 的信赖域。Humanoid 中，归一化组最后十次测试回报的标准差约为 $57.1$，
-明显低于不归一化组的 $123.8$。
-
-图~\ref{fig:advnorm-stability} 展示了三个环境的 KL divergence 曲线（上）与 surrogate
-objective 绝对值（下，对数坐标）。需注意 Walker2d 不归一化时 surrogate 量级异常，
-因此更应关注是否出现非有限值以及 KL 是否退化，而不能只比较绝对大小。
+Walker2d 不归一化时 surrogate 只有 $86.6\%$ 的记录是有限值，最大绝对值
+$9.83\times10^{33}$；平均 KL 仅 $0.00213$，约 $4\%$ 的更新中 KL 接近 0，
+说明大量更新退化或失败。归一化后 surrogate 全部有限，平均 KL 升到 $0.00881$，
+真正用满了 $\delta=0.01$ 的信赖域。Humanoid 中，归一化组最后十次回报标准差为
+$57.1$，不归一化组为 $123.8$（图~\ref{fig:advnorm-stability}）。
 
 \begin{figure}[H]
     \centering
@@ -492,51 +349,32 @@ objective 绝对值（下，对数坐标）。需注意 Walker2d 不归一化时
     \label{fig:advnorm-stability}
 \end{figure}
 
-\subsubsection{Advantage Normalization 是否总是带来性能提升}
+\subsubsection{是否总是带来性能提升}
 
-不是。它在 Walker2d 中带来了决定性提升，但在 Humanoid 中最终性能基本不变，在
-HalfCheetah 中不归一化组反而取得了更高的最终回报。
+不是。HalfCheetah 不归一化反而略高一点。归一化更像数值鲁棒性的兜底——TRPO 已经用 KL
+约束限制了更新幅度，advantage 尺度本来稳定时再减去 batch 均值反而改变了有限样本下的
+梯度方向、引入统计噪声；但一旦 advantage 量级失控（Walker2d），归一化就是必须。
 
-可能原因：TRPO 已通过 KL 约束和 line search 限制策略更新幅度；当原始 advantage 的
-尺度本身较稳定时，额外归一化并非必需。减去 batch 均值还会改变有限样本下的梯度方向，
-并引入 batch 统计噪声。因此归一化更像是一种提高数值鲁棒性的机制，而不是必然提升
-最终性能的方法。
+\subsection{Trajectory 与 Rollout 的样本利用率\quad\small\textnormal{(对应作业 2.2、3.2.1--3.2.3)}}
 
-\subsection{Trajectory 与 Rollout 的样本利用率比较}
-
-\subsubsection{每次策略更新使用的 Transition 数量}
-
-rollout 模式配置了 $8$ 个并行环境和 \texttt{interact\_per\_epoch=2000}，因此每次更新
-固定采集并使用 $8\times2000=16000$ 个 transition。trajectory 模式每次收集 $10$ 条轨迹，
-有效 transition 数等于 \texttt{masks.sum()}，会随 episode 长度变化。对全部 $5000$ 次策
-略更新取平均后，HalfCheetah、Humanoid 和 Walker2d 每次分别实际使用约 $10000$、$884.81$
-和 $6224.58$ 个有效 transition；对应的平均采集数分别为 $16000$、$1284.45$ 和 $8780.30$。
-
-\subsubsection{哪种模式样本利用率更高}
-
-如图~\ref{fig:sample-utilization} 所示，rollout 中所有固定长度片段都会参与更新，三个
-环境利用率均为 $100\%$。trajectory 只使用成功写入 \texttt{TrajectoryRollout} 的完整
-轨迹，三个环境平均利用率分别为 $62.50\%$、$69.04\%$ 和 $70.75\%$。因此按"参与更新
-的有效 transition 数 / 实际采集 transition 数"定义，rollout 的样本利用率更高。
+rollout 配置 8 个并行环境、\texttt{interact\_per\_epoch=2000}，每次更新固定使用
+$8\times2000=16000$ 个 transition；trajectory 每次收集 10 条轨迹，有效步数由
+\texttt{masks.sum()} 决定。5000 次更新平均下来，HalfCheetah、Humanoid、Walker2d 实际使用
+transition 约 $10000$、$885$、$6225$，对应利用率约 $62.5\%$、$69.0\%$、$70.8\%$
+（图~\ref{fig:sample-utilization}）。HalfCheetah 差距最大，原因是 episode 通常到 1000 步
+上限、并行环境结束时间高度同步，存满 10 条后剩余几条整批被丢弃。
 
 \begin{figure}[H]
     \centering
-    \includegraphics[width=\textwidth]{figures/exploration/sample_utilization.pdf}
-    \caption{Trajectory 与 rollout 每次更新的 transition 数量及样本利用率}
+    \includegraphics[width=0.9\textwidth]{figures/exploration/sample_utilization.pdf}
+    \caption{Trajectory 与 rollout 每次更新的 transition 数量与样本利用率}
     \label{fig:sample-utilization}
 \end{figure}
 
-\subsubsection{样本利用率更高是否意味着训练效果更好}
-
-不一定。如图~\ref{fig:trajectory-rollout-reward} 所示，在相同交互步数处，HalfCheetah
-的 trajectory 与 rollout 回报分别约为 $1727$ 和 $4276$，高利用率 rollout 明显更好；
-但 Humanoid 在约 $6.34\times10^6$ 个交互步时，利用率较低的 trajectory 回报约为 $655$，
-高于 rollout 的约 $459$；Walker2d 在约 $4.33\times10^7$ 步时，trajectory 与 rollout
-分别约为 $4713$ 和 $4657$。
-
-这说明样本数量和样本质量需要同时考虑：rollout 不丢弃 transition，但固定长度截断可能
-引入 GAE 边界偏差；trajectory 会浪费并行采集产生的部分数据，却保留了更完整的 episode
-边界。因此，更高的 transition 利用率并不保证更高的 reward。
+但利用率高不等于效果好。相同交互步数处，HalfCheetah rollout（$4276$）远好于
+trajectory（$1727$）；Humanoid 在 $6.34\times10^6$ 步处 trajectory（$655$）反而高于
+rollout（$459$）；Walker2d 在 $4.33\times10^7$ 步处两者接近（$4713$ vs $4657$）。
+rollout 不丢样本但有截断偏差，trajectory 浪费样本但 episode 边界干净，是数量与质量的权衡。
 
 \begin{figure}[H]
     \centering
@@ -545,102 +383,196 @@ rollout 模式配置了 $8$ 个并行环境和 \texttt{interact\_per\_epoch=2000
     \label{fig:trajectory-rollout-reward}
 \end{figure}
 
-%% ============================================================
-\section{总结与反思}
-%% ============================================================
+\subsection{训练过程诊断：critic loss、step size 与 backtrack\quad\small\textnormal{(诊断补充)}}
+\label{sec:diagnostics}
 
-\subsubsection*{collect\_trajectories 的实现是否会改变 TRPO 的 on-policy 特性？}
+除 reward/KL/surrogate 之外，\texttt{trpo.py} 的 \texttt{result.add\_metric} 还记录了
+critic 的 \texttt{value/loss}、回溯线搜索的 \texttt{actor/backtrack\_step}、自然梯度方向的步长
+\texttt{actor/stepsize}、二次型 \texttt{actor/xHx} 与 \texttt{gradient\_direction\_l2norm}。
+这几个量直接反映 TRPO 更新链路上每一环的健康状况；从 SwanLab/TensorBoard 日志中取出
+\texttt{value/loss}、\texttt{actor/backtrack\_step}、\texttt{actor/stepsize}
+绘制成图~\ref{fig:diagnostics}，并把六组配置的关键统计汇总在表~\ref{tab:diagnostics}。
 
-不会。trajectory 与 rollout 模式均使用当前策略采集数据，并在一次策略更新后清空对应
-缓冲区，不会重复使用旧策略生成的样本。因此，\texttt{collect\_trajectories}
-仅改变采样停止条件和数据组织形式，不改变 TRPO 的 on-policy 特性。
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{figures/exploration/training_diagnostics.pdf}
+    \caption{三个环境、advan\_norm true/false 下的 critic value loss（log 轴）、
+    回溯步数（20-pt 滑动平均）与自然梯度步长（log 轴）。}
+    \label{fig:diagnostics}
+\end{figure}
 
-\subsubsection*{如果只能保留一种采样方式，你会选择 trajectory 还是 rollout？}
+\begin{table}[H]
+\centering
+\caption{诊断指标统计（rollout 配置）}
+\label{tab:diagnostics}
+\renewcommand{\arraystretch}{1.2}
+\small
+\begin{tabular}{llcccc}
+\toprule
+环境 & advan\_norm & value loss 均值 & 回溯步均值 & 回溯步最大 & step size 均值 \\
+\midrule
+HalfCheetah & true  & $903.9$  & $0.26$ & $1$ & $1.24$ \\
+HalfCheetah & false & $1018.6$ & $0.30$ & $1$ & $5.54\!\times\!10^{-2}$ \\
+Humanoid    & true  & $349.1$  & $0.00$ & $1$ & $0.90$ \\
+Humanoid    & false & $1130.2$ & $0.00$ & $1$ & $1.85\!\times\!10^{-2}$ \\
+Walker2d    & true  & $1093.8$ & $0.14$ & $1$ & $1.47$ \\
+Walker2d    & false & $170.3$  & $\mathbf{2.86}$ & $\mathbf{9}$ & $5.34\!\times\!10^{-3}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-如果只能保留一种，我会选择 rollout。最直接的原因是它采集的 transition
-都会参与本次更新，三个环境中的样本利用率都是 $100\%$，而 trajectory 只有约
-$62.50\%\sim70.75\%$。从实验结果看，rollout 在 HalfCheetah 上明显优于 trajectory，
-在 Walker2d 上最终性能也很好，说明固定长度截断带来的 advantage 估计偏差不一定会成为
-主要问题。另外，rollout 每次更新固定使用 $16000$ 个 transition，训练批量更容易控制，
-比较不同实验时也更方便。
+\paragraph{Critic value loss.}
+HalfCheetah、Walker2d 的 critic loss 都呈典型的"先快速下降、再随策略改进缓慢爬升"
+的形态——策略变好后 return 量级上涨，MSE 目标随之放大；归一化与否的曲线大致重合。
+Humanoid 是一个反例：不归一化时 critic loss 均值从 $349$ 升到 $1130$（约 $3.2$ 倍），
+而 reward 几乎相同——说明 critic 在拟合一个被未归一化 advantage 间接放大的 return 目标，
+但 actor 因步长太小（见下）无法把这些信号转化为策略改进。Walker2d 不归一化时
+critic loss 反而\textit{看起来}更低（$170$），原因不是拟合得好，而是 reward 长期停留在 $355$、
+return 量级本来就小，并不能反推出 critic 健康。
 
-但这个选择并不是说 trajectory 没有价值。Humanoid 和 Walker2d 在部分相同交互步数下，
-trajectory 的回报反而更高，说明完整轨迹确实可能带来更准确的 advantage。只是综合样本
-利用率、实现复杂度和三个环境的整体结果，rollout 更适合作为默认采样方式。如果继续改
-进，可以给 rollout 末端加入正确的 value bootstrap，尽量减小固定长度截断造成的偏差。
-
-\subsubsection*{完成实验报告的撰写后，你对 TRPO 算法是否有了新的感悟或认识？}
-
-我一开始对 TRPO 的理解主要停留在"用 KL 散度限制策略更新"这一句话上，后来重新读论文
-和代码后，感觉这句话仍然正确，但并不完整。TRPO 论文中的单调改进推导提供了一个很漂亮的
-理论外壳：真实回报难以直接优化，于是构造 surrogate objective，并用策略距离惩罚状态分布
-偏移。但这些推导依赖精确期望、精确 advantage 和理想化的约束求解；一旦进入神经网络和
-有限样本训练，理论本身并不能直接回答"为什么 vanilla policy gradient 一定不行、TRPO 一定
-行"。如果只追求局部改进，普通梯度法配合足够小的步长也有局部上升的直觉，问题在于这个
-步长往往小到训练效率很差，而且高方差采样会让"足够小"很难判断。
-
-因此我现在更倾向于把 TRPO 理解为一种可实现的 natural policy gradient / mirror descent
-方法，而不是只把它理解成单调改进定理的直接应用。普通梯度在参数空间的欧氏几何下更新，
-而 TRPO 用 KL 所诱导的 Fisher 信息矩阵重新度量"一步走多远"；这和牛顿法用 Hessian 调整
-方向有相似之处，只是这里的距离来自策略分布而不是参数向量本身。真正让它能用于深度策略
-网络的，是一系列实现选择：不显式构造 Fisher 矩阵，只通过 Hessian-vector product 计算
-$Fv$；用共轭梯度近似求解 $Fx=g$；再用有限次数 line search 检查实际 KL 和 surrogate。
-从这个角度看，TRPO 的贡献不只是一个不等式，而是把一个几何上合理但计算上昂贵的更新
-变成了可运行的算法。
-
-这次实验也让我更重视 implementation choice。Walker2d 关闭 advantage normalization 后，
-surrogate objective 出现极端量级和非有限值，说明一个看似"只是标准化"的细节会直接改变
-训练是否可用。trajectory 模式中的 \texttt{masks}、rollout 末端是否 bootstrap、buffer 满时
-\texttt{pos} 如何解释，也都不是论文主公式里最显眼的内容，但它们会决定最后算出来的
-advantage、KL 和梯度是否可信。后续许多深度强化学习工作也反复说明，代码级优化和实现
-细节会显著影响算法表现~\cite{implmatters}。所以相比把复杂数学推导当作算法优越性的全部
-原因，我认为更实际的学习方式是：先理解理论给出的设计原则，再检查这些原则在代码中如何
-被近似、被简化、被数值技巧支撑。
-
-\subsubsection*{针对本次算法实现，你是否有什么想法和想改进的建议？}
-
-这次实现中，我卡得最久的地方不是某个公式本身，而是公式和代码中的数
-据形状、缓冲区状态对应不上。例如 rollout 缓冲区刚好填满时，\texttt{ReplayBuffer.pos}
-会回到 $0$，如果继续把 \texttt{pos} 当作有效长度，就会取到空数据，最后在计算
-log probability 或 reshape 时才报错。这个错误离真正原因比较远，排查起来很耗时间。
-后来需要根据 \texttt{full} 判断有效长度，缓冲区满时使用 \texttt{buffer\_size}。另外，
-服务器连接中断、SwanLab 无法连接以及长时间实验失败后重新运行，也占用了不少时间。
-
-README 目前主要介绍了环境安装和两个运行脚本，但对配置项、输出目录和常见错误解释
-得比较少。我建议补充一组能够快速验证代码的短实验命令，并说明 \texttt{collect\_traj}、
-\texttt{buffer\_name}、\texttt{interact\_per\_epoch} 和 \texttt{advan\_norm} 等参数的
-作用；同时给出服务器无法连接 SwanLab 时使用 TensorBoard 保存日志、再复制到本地分析
-的备用流程。代码中的 TODO 即使已经实现仍然保留，也容易让人误以为对应部分还没有完成，
-最好在实现后删除或改成普通注释。
-
-我认为这次任务的难点属于"看懂公式不算特别难，但正确实现并验证比较难"。GAE、共轭
-梯度和 line search 单独看都能理解，真正困难的是保证 mask、episode 边界、buffer 长度
-和 tensor shape 全部正确，并通过多个环境的长时间实验确认实现没有隐藏问题。如果项目
-能够提供少量针对 advantage 计算、满缓冲区和 trajectory mask 的单元测试，会减少很多
-排查时间。
-
-%% ============================================================
-\section{总体结论}
-%% ============================================================
-
-本实验完成了 TRPO 算法在三个 MuJoCo v5 环境中的系统性验证，主要结论如下：
+\paragraph{Step size 与 backtrack.}
+TRPO 每次更新先解 $Fx=g$ 得到方向 $\Delta\theta_\mathrm{base}$，按
+$\sqrt{2\delta/(\Delta\theta_\mathrm{base}^\top F\Delta\theta_\mathrm{base})}$ 给出理论最大
+\texttt{stepsize}，再做最多 \texttt{backtracking\_steps} 次回溯。
+两条诊断量一起看出三件事：
 
 \begin{enumerate}
-    \item 三个环境训练难度差异显著：HalfCheetah 最易收敛（最终回报约 $4276$），Walker2d
-          最终性能最高（约 $4718$），Humanoid 因高维状态最难训练（约 $1083$）。
-    \item Rollout 样本利用率（$100\%$）显著高于 trajectory（$62\%\sim71\%$）；但利用率
-          更高不一定带来更好的训练效果——Humanoid 和 Walker2d 中 trajectory 在相同
-          交互步数下表现更好。
-    \item Advantage normalization 对数值稳定性至关重要：Walker2d 关闭归一化后 surrogate
-          objective 出现量级达 $10^{33}$ 的非有限值，训练几乎失败；但在 HalfCheetah 中，
-          不归一化组最终回报反而更高，说明其效果具有环境依赖性。
-    \item TRPO 的 KL 约束配合共轭梯度和 line search 在实验中整体生效，但理论上的单调
-          改进在有限样本和二阶近似下并不总能严格保证，advantage normalization 和 rollout
-          末端 bootstrap 的正确处理同样关键。
-    \item 从实现角度看，TRPO 更像是将 natural policy gradient / mirror descent 思想工程化：
-          用 Hessian-vector product 和共轭梯度避免显式求逆 Fisher 矩阵，再通过若干数值技巧
-          保证更新可运行。因此报告中的理论推导应和具体实现选择一起理解。
+    \item \textbf{二阶近似多数情形下是可信的}：HalfCheetah、Humanoid、Walker2d 三个归一化配置
+          的回溯均值都在 $0\sim0.3$，最大也只到 $1$——CG 解出来的方向第一次试探基本就被采纳。
+    \item \textbf{不归一化让"步子根本迈不出去"}：三个不归一化配置的 step size 都比对应归一化组
+          小 $1\sim2$ 个数量级（HalfCheetah $1.24\!\to\!0.055$、Humanoid $0.90\!\to\!0.019$、
+          Walker2d $1.47\!\to\!0.0053$）。原因是 advantage 未中心化时 $\Delta\theta_\mathrm{base}^\top F\Delta\theta_\mathrm{base}$
+          被放大，按 $\sqrt{2\delta/\cdot}$ 反推的步长自然被压缩；这与 §3.3 给出的 Walker2d 平均 KL
+          $0.00213$ 远小于 $\delta=0.01$ 完全自洽——根本没用满信赖域。
+    \item \textbf{Walker2d 不归一化是唯一回溯频繁失败的配置}：均值 $2.86$、最高 $9$ 次（达到
+          \texttt{backtracking\_steps} 上限即全部失败、参数回滚）。结合 §3.3 的 surrogate 量级
+          $10^{33}$，这就是 advantage 尺度爆掉后 line search 反复检查不通过的直接表现。
 \end{enumerate}
+
+综合 §3.3 与本节诊断：advantage normalization 的作用不是"提升 reward"，而是把整个 TRPO
+更新链路（advantage→surrogate→CG 方向→step size→line search）控制在数值合理的区间内；
+一旦关闭，链路上任何一环都可能崩——Walker2d 是 line search 崩，Humanoid 是 step size
+被压到几乎不动，HalfCheetah 因为环境本身 advantage 尺度稳定，所以暴露不出问题。
+
+\section{反思}
+
+\texttt{collect\_trajectories} 不会改变 TRPO 的 on-policy 性质：两种模式都用当前策略
+采数据、更新一次后清空缓冲区，区别只是停止条件和数据组织形式。如果只能保留一种采样方式，
+我会选 rollout——它每次固定用满 $16000$ 个 transition，批量稳定、实现简单，
+HalfCheetah 上明显更好，Walker2d 上最终性能也很好。trajectory 在 Humanoid 等高维任务
+相同步数下偶尔会高一些，但综合下来 rollout 更稳定。如果继续做，给 rollout 末端加上正确
+的 value bootstrap 能进一步缩小截断偏差。
+
+写完报告后我对 TRPO 的理解也比一开始更具体。最初我只把它记成"用 KL 限制策略更新"，
+单调改进定理是它的理论外壳，但这套推导依赖精确期望、精确 advantage 和理想化的约束求解——
+一旦进入神经网络和有限样本，理论本身并不能直接回答"为什么 vanilla policy gradient 不行、
+TRPO 就行"。普通梯度法配上足够小的步长也有局部上升的直觉，问题在于这个步长往往小到
+训练效率很差，而高方差采样让"足够小"很难判断。所以我现在更愿意把 TRPO 看成是
+natural policy gradient / mirror descent 的工程化版本：用 KL 和 Fisher 矩阵重新度量"一步
+走多远"，再用 Hessian-vector product、共轭梯度、line search 让这件事在大网络上能算出来。
+
+这次实验也让我对 implementation choice 的影响有了更直观的感受。Walker2d 关掉 advantage
+normalization 之后 surrogate 直接出现非有限值，一个看似只是标准化的细节就能决定能不能
+训。同样地，trajectory 的 \texttt{masks}、rollout 末端是否 bootstrap、buffer 满时
+\texttt{pos} 回到 0 这些都不写在论文主公式里，但都会直接影响 advantage、KL 和梯度的可信度。
+这一点和~\cite{implmatters} 的观察一致：深度 RL 里代码级细节会显著左右算法表现。
+我卡得最久的几次都不是公式本身，而是 \texttt{ReplayBuffer.pos} 在缓冲区满后回到 0、
+\texttt{masks} 没用对、tensor shape 不一致这类问题。如果项目能加几个针对
+advantage 计算、满 buffer 和 trajectory mask 的小单元测试，应该能省下不少排查时间；
+README 也建议补一组能快速验证的短实验命令和 SwanLab 不可用时的 TensorBoard 备用方案。
+
+\section{总体结论}
+
+\begin{enumerate}
+    \item 三个环境难度差异明显：HalfCheetah 最易收敛（$4276$），Walker2d 最高（$4718$），
+          Humanoid 因高维状态最难（$1083$）。
+    \item rollout 样本利用率（$100\%$）高于 trajectory（$62\%\sim71\%$），但 Humanoid 和
+          Walker2d 在相同交互步数下 trajectory 反而略好——利用率高不等于训练效果好。
+    \item advantage normalization 是数值稳定性的兜底：Walker2d 关掉后 surrogate
+          出现 $10^{33}$ 量级的非有限值；但 HalfCheetah 不归一化反而更高，说明效果依赖环境。
+    \item TRPO 的理论给出单调改进的设计原则，但实际表现还取决于 advantage normalization、
+          rollout 末端 bootstrap、CG 阻尼等实现细节。可以把 TRPO 视为 NPG / mirror descent
+          的工程化版本，理论和实现两侧需要一起看。
+\end{enumerate}
+
+%% ============================================================
+\appendix
+\section*{附录\ A\quad 问题应答索引}
+\addcontentsline{toc}{section}{附录 A 问题应答索引}
+
+为便于对照作业要求，下表列出每个 README 提问对应在本报告中的位置与一句话回答。
+
+\renewcommand{\arraystretch}{1.2}
+\begin{small}
+\begin{tabular}{p{0.06\textwidth}p{0.36\textwidth}p{0.08\textwidth}p{0.42\textwidth}}
+\toprule
+题号 & 问题 & 位置 & 简答 \\
+\midrule
+1.1.1 & \texttt{collect\_trajectories} 与普通 rollout 的停止条件 & §2.1 第 1 段 &
+rollout 按固定 \texttt{interact\_per\_epoch} 步截断；trajectory 按"存满 \texttt{trajnum} 条完整轨迹"截断，单条轨迹以 \texttt{done} 或达到 \texttt{max\_episode\_length} 结束。 \\
+
+1.1.2 & 每条轨迹需保存什么信息，分别用在哪一步 & §2.1 第 2 段 &
+保存 states / actions / rewards / dones / log\_probs：states 喂 actor 与 critic，actions 配 ratio，rewards 反推 GAE，dones 切断 bootstrap，log\_probs 是 $\pi_\mathrm{old}$ 用于重要性采样。 \\
+
+1.1.3 & 终止信号下轨迹如何结束，未填满部分如何处理 & §2.1 第 2 段 &
+\texttt{add\_traj()} 落盘并重置该 env 缓冲区；未填满位置零初始化、\texttt{masks=0}，下游用 \texttt{masks==1} 过滤。 \\
+
+1.1.4 & \texttt{masks} 的作用；不使用会怎样 & §2.1 第 3 段 &
+区分真实 transition 与 padding；不用 mask 会让零 reward 污染 GAE、advantage 均值方差偏移、归一化失真、样本利用率虚高。 \\
+
+1.1.5 & 收集完一批轨迹后为何重新初始化环境 & §2.1 第 3 段 &
+否则部分 env 停在 episode 中段，下一批起点不来自初始分布，破坏\textit{从 $\rho_0$ 出发}的假设；这不影响 on-policy 性质。 \\
+
+1.2.1 & Theorem 1 每项含义与单调改进条件 & §2.2.1 全节 &
+$L$ 是旧分布下的代理目标，$\frac{4\epsilon\gamma}{(1-\gamma)^2}\alpha^2$ 是 TV 惩罚；只要 $L-C\alpha^2\ge\eta(\pi_\mathrm{old})$，下界上升，单调改进。 \\
+
+1.2.2 & 与 Kakade--Langford 的 Theorem 4.1 处理上的不同 & §2.2.1 第 1 段 &
+Kakade--Langford 只对混合策略 $\pi_\mathrm{new}=(1-\alpha)\pi_\mathrm{old}+\alpha\pi'$ 成立，$\alpha$ 是显式混合系数；TRPO 将 $\alpha$ 直接定义为 $D_\mathrm{TV}^{\max}$，可适用于任意随机策略（含高斯神经网络策略）。 \\
+
+1.2.3 & surrogate objective 实际怎么写 & §2.2.2 全节 &
+$\hat L(\theta)=\frac{1}{N}\sum_t \frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_\mathrm{old}}(a_t|s_t)}\hat A_t$；代码中 \texttt{ratio=exp(new\_logp-old\_logp)}，surrogate = \texttt{(ratio*adv).mean()}。 \\
+
+1.2.4 & 为何约束 KL 而非 TV；为何 line search & §2.2.3 全节 &
+Pinsker 不等式让 KL 隐式控制 TV 且约束更紧；KL 对高斯策略闭式可微、可做二阶展开得到 Fisher。线搜索是因 surrogate 一阶近似、KL 二阶近似都是近似，需要在真参数上检查 KL$\le\delta$ 且 surrogate 提升。 \\
+
+2.1 & 三个环境训练难度是否一致 & §3.1 全节 &
+不一致：HalfCheetah/Walker2d 持续上升收敛到 $4000$+，Humanoid 因 348 维状态与协调难度提升慢、最终值低。 \\
+
+2.2 & 哪个环境样本利用率差异最大 & §3.4 第 1 段 &
+HalfCheetah 差距最大（$62.5\%$）；episode 常达 1000 上限、并行环境同步结束，存满 10 条后剩余整批丢弃。 \\
+
+2.3 & advantage / return 计算两种模式的差异 & §3.2 全节 &
+都用 GAE。trajectory 用 masks 在每条完整轨迹反向递推，边界精确；rollout 对固定片段递推，末端 value 置 0 引入 truncation bias。 \\
+
+3.1.1 & advan\_norm true/false 平均回报曲线差异 & §3.3 第 1 段 + 图~\ref{fig:advnorm-reward} &
+HalfCheetah 不归一化更高（$4608$ vs $4276$），Humanoid 两组持平，Walker2d 不归一化几乎崩溃（$355$）。 \\
+
+3.1.2 & 归一化后训练是否更稳定 & §3.3 第 2 段 + 图~\ref{fig:advnorm-stability} + §3.5 &
+更稳定：Walker2d 归一化后 surrogate 全部有限、平均 KL 从 $0.00213$ 升到 $0.00881$，能真正用到 $\delta=0.01$ 信赖域。 \\
+
+3.1.3 & 归一化是否总带来提升；不是的原因 & §3.3 第 3 段 &
+不是：HalfCheetah 反而略降。原因是 TRPO 已用 KL 约束控幅，advantage 尺度稳定时减均值反而改变有限样本梯度方向、引入统计噪声。 \\
+
+3.2.1 & rollout 与 trajectory 实际使用 transition 数 & §3.4 第 1 段 + 图~\ref{fig:sample-utilization} &
+rollout 固定 $16000$；trajectory 在三个环境分别约 $10000/885/6225$。 \\
+
+3.2.2 & 哪种采样模式利用率更高 & §3.4 第 1 段 &
+rollout 利用率 $100\%$，全面高于 trajectory 的 $62\%\sim71\%$。 \\
+
+3.2.3 & 利用率更高是否一定更好 & §3.4 第 2 段 + 图~\ref{fig:trajectory-rollout-reward} &
+不一定。HalfCheetah rollout 远好于 trajectory；Humanoid 在低交互步数处 trajectory 反超；是"数量"与"边界质量"的权衡。 \\
+
+3.3 & \texttt{collect\_trajectories} 是否改变 TRPO 的 on-policy 性质 & §4 第 1 段 &
+不改变。两种模式都用当前策略采数据、更新后清空缓冲区，区别只是停止条件和数据组织形式。 \\
+
+3.4 & 只保留一种采样方式会选哪个 & §4 第 1 段 &
+选 rollout：固定 $16000$ 样本、批量稳定、实现简单，HalfCheetah 上明显更好，Walker2d 上最终性能也好。 \\
+
+3.5 & 写完报告后对 TRPO 的新认识 & §4 第 2--3 段 &
+把 TRPO 看作 NPG / mirror descent 的工程化版本：用 KL+Fisher 重新度量"一步走多远"，再用 HVP+CG+line search 把它在大网络上落地。 \\
+\bottomrule
+\end{tabular}
+\end{small}
 
 %% ============================================================
 \begin{thebibliography}{9}
