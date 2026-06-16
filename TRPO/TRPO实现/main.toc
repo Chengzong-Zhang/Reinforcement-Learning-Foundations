@@ -1,0 +1,32 @@
+\contentsline {section}{\numberline {1}实验概况}{3}{section.1}%
+\contentsline {subsection}{\numberline {1.1}实验环境}{3}{subsection.1.1}%
+\contentsline {subsection}{\numberline {1.2}超参数设置}{3}{subsection.1.2}%
+\contentsline {subsection}{\numberline {1.3}实验结果汇总}{3}{subsection.1.3}%
+\contentsline {section}{\numberline {2}代码补全}{4}{section.2}%
+\contentsline {subsection}{\numberline {2.1}\texttt {collect\_trajectories} 实现}{4}{subsection.2.1}%
+\contentsline {subsubsection}{\numberline {2.1.1}采样停止条件}{4}{subsubsection.2.1.1}%
+\contentsline {subsubsection}{\numberline {2.1.2}轨迹数据与 Episode 边界处理}{4}{subsubsection.2.1.2}%
+\contentsline {subsubsection}{\numberline {2.1.3}\texttt {masks} 的作用}{5}{subsubsection.2.1.3}%
+\contentsline {subsubsection}{\numberline {2.1.4}采样后重置环境的必要性}{5}{subsubsection.2.1.4}%
+\contentsline {subsection}{\numberline {2.2}\texttt {\_update\_policy} 实现}{5}{subsection.2.2}%
+\contentsline {subsubsection}{\numberline {2.2.1}定理含义与单调改进条件}{6}{subsubsection.2.2.1}%
+\contentsline {subsubsection}{\numberline {2.2.2}向任意随机策略的推广}{6}{subsubsection.2.2.2}%
+\contentsline {subsubsection}{\numberline {2.2.3}Surrogate Objective 的实际设计}{7}{subsubsection.2.2.3}%
+\contentsline {subsubsection}{\numberline {2.2.4}KL 约束与线搜索的必要性}{7}{subsubsection.2.2.4}%
+\contentsline {paragraph}{为什么用 KL 代替 TV。}{7}{subsubsection.2.2.4}%
+\contentsline {paragraph}{Fisher 信息矩阵与自然梯度。}{8}{subsubsection.2.2.4}%
+\contentsline {paragraph}{为什么还需要 line search。}{8}{subsubsection.2.2.4}%
+\contentsline {section}{\numberline {3}探索部分}{8}{section.3}%
+\contentsline {subsection}{\numberline {3.1}不同环境的训练难度}{8}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Trajectory 与 Rollout 的样本利用率差异}{8}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Advantage 与 Return 的计算差异}{9}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}Advantage Normalization 的影响}{9}{subsection.3.4}%
+\contentsline {subsubsection}{\numberline {3.4.1}两组实验平均回报曲线差异}{9}{subsubsection.3.4.1}%
+\contentsline {subsubsection}{\numberline {3.4.2}Advantage Normalization 对训练稳定性的影响}{10}{subsubsection.3.4.2}%
+\contentsline {subsubsection}{\numberline {3.4.3}Advantage Normalization 是否总是带来性能提升}{11}{subsubsection.3.4.3}%
+\contentsline {subsection}{\numberline {3.5}Trajectory 与 Rollout 的样本利用率比较}{11}{subsection.3.5}%
+\contentsline {subsubsection}{\numberline {3.5.1}每次策略更新使用的 Transition 数量}{11}{subsubsection.3.5.1}%
+\contentsline {subsubsection}{\numberline {3.5.2}哪种模式样本利用率更高}{11}{subsubsection.3.5.2}%
+\contentsline {subsubsection}{\numberline {3.5.3}样本利用率更高是否意味着训练效果更好}{12}{subsubsection.3.5.3}%
+\contentsline {section}{\numberline {4}总结与反思}{12}{section.4}%
+\contentsline {section}{\numberline {5}总体结论}{14}{section.5}%
